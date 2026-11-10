@@ -189,7 +189,7 @@
         <div class="mt-2 flex flex-wrap items-center justify-center gap-4 text-xs text-slate-300">
           <label class="inline-flex items-center gap-1.5 cursor-pointer"><input id="chkSkeleton" type="checkbox" checked class="accent-emerald-500"> 顯示外骨骼</label>
           <label class="inline-flex items-center gap-1.5 cursor-pointer"><input id="chkTrail" type="checkbox" class="accent-emerald-500"> 顯示軌跡</label>
-          <span class="text-slate-500 desk-only">快捷鍵：<span class="kbd">←</span><span class="kbd">→</span> 逐格・<span class="kbd">空白</span> 播放・<span class="kbd">T</span> 設離地・<span class="kbd">L</span> 設落地</span>
+          <span class="text-slate-500 desk-only" id="kbdHint"></span>
         </div>
         </div>
       </div>
@@ -226,7 +226,10 @@
         <div class="mt-4 grid grid-cols-2 gap-2">
           <label class="text-xs font-bold text-slate-300">拍攝幀率 (FPS)
             <select id="fpsSel" class="field mt-1">
+              <option value="24">24 FPS</option>
+              <option value="25">25 FPS</option>
               <option value="30">30 FPS</option>
+              <option value="50">50 FPS</option>
               <option value="60" selected>60 FPS</option>
               <option value="120">120 FPS</option>
               <option value="240">240 FPS</option>
@@ -286,10 +289,7 @@
           </div>
           <div id="eventList" class="space-y-1.5"></div>
           <div class="mt-3 p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-100 space-y-1">
-            <p><b>怎麼檢查？</b>按「跳到」再用 <span class="kbd">←</span><span class="kbd">→</span> 逐格看：</p>
-            <p>・<b class="text-emerald-300">離地 T</b>＝腳尖<b>完全離開地面</b>的第一格</p>
-            <p>・<b class="text-rose-300">落地 L</b>＝腳尖<b>第一次碰到地面</b>的那一格</p>
-            <p>不對的話，停在正確的那一格按「設為這一格」（或按鍵盤 <span class="kbd">T</span>／<span class="kbd">L</span>）。</p>
+            <div id="checkHelp"></div>
           </div>
           <div class="mt-3 grid grid-cols-2 gap-2" id="liveResult"></div>
           <button id="btnToResults" class="btn btn-primary w-full mt-3">確認無誤，看結果 →</button>
@@ -407,9 +407,10 @@
       <button class="btn btn-ghost bar-btn !px-1" data-frames="1" aria-label="前進 1 格">1 ▶</button>
       <button class="btn btn-ghost bar-btn !px-1" data-frames="10" aria-label="前進 10 格">+10</button>
     </div>
-    <div class="grid grid-cols-2 gap-1.5">
-      <button id="barSetT" class="btn bar-btn bg-emerald-500/15 text-emerald-300 border border-emerald-500/50">這格是離地 T</button>
-      <button id="barSetL" class="btn bar-btn bg-rose-500/15 text-rose-300 border border-rose-500/50">這格是落地 L</button>
+    <div class="grid grid-cols-2 gap-1.5" id="barSetRow">
+      <button id="barSetD" class="btn bar-btn !px-1 bg-sky-500/15 text-sky-300 border border-sky-500/50 hidden">這格是<br class="sm:hidden">第一次落地</button>
+      <button id="barSetT" class="btn bar-btn !px-1 bg-emerald-500/15 text-emerald-300 border border-emerald-500/50">這格是離地 T</button>
+      <button id="barSetL" class="btn bar-btn !px-1 bg-rose-500/15 text-rose-300 border border-rose-500/50">這格是落地 L</button>
     </div>
    </div>
   </div>
@@ -556,6 +557,27 @@
     });
 
     // Step 2 — test, fps, video
+    // Shortcut hints, the "how to check" box and the phone buttons follow the test type.
+    function updateShortcutTexts() {
+      const dj = S.test === 'DJ';
+      const kb = (x) => `<span class="kbd">${x}</span>`;
+      $('kbdHint').innerHTML = `快捷鍵：${kb('←')}${kb('→')} 逐格・${kb('空白')} 播放・` + (dj
+        ? `${kb('D')}或${kb('1')} 第一次落地・${kb('T')} 離地・${kb('L')}或${kb('2')} 第二次落地`
+        : `${kb('T')} 設離地・${kb('L')} 設落地`);
+      $('checkHelp').innerHTML = `<p><b>怎麼檢查？</b>按「跳到」再用 ${kb('←')}${kb('→')} 逐格看：</p>` + (dj
+        ? `<p>・<b class="text-sky-300">第一次落地</b>＝從跳箱落下後，腳尖<b>第一次碰到地面</b>的那一格（${kb('D')}／${kb('1')}）</p>
+           <p>・<b class="text-emerald-300">離地 T</b>＝反彈時腳尖<b>完全離開地面</b>的第一格（${kb('T')}）</p>
+           <p>・<b class="text-rose-300">第二次落地 L</b>＝反彈後腳尖<b>再次碰到地面</b>的那一格（${kb('L')}／${kb('2')}）</p>`
+        : `<p>・<b class="text-emerald-300">離地 T</b>＝腳尖<b>完全離開地面</b>的第一格（${kb('T')}）</p>
+           <p>・<b class="text-rose-300">落地 L</b>＝腳尖<b>第一次碰到地面</b>的那一格（${kb('L')}）</p>`)
+        + `<p>不對的話，停在正確的那一格按「設為這一格」或快捷鍵。</p>`;
+      $('barSetD').classList.toggle('hidden', !dj);
+      $('barSetRow').classList.toggle('grid-cols-3', dj);
+      $('barSetRow').classList.toggle('grid-cols-2', !dj);
+      $('barSetT').textContent = dj ? '這格是離地 T' : '這格是離地 T';
+      $('barSetL').innerHTML = dj ? '這格是<br class="sm:hidden">第二次落地' : '這格是落地 L';
+    }
+
     function renderTestCards() {
       $('testCards').innerHTML = Object.entries(TESTS).map(([key, t]) => `
         <button class="test-card w-full ${S.test === key ? 'selected' : ''}" data-test="${key}">
@@ -565,6 +587,7 @@
       document.querySelectorAll('#testCards .test-card').forEach(b => b.addEventListener('click', () => setTest(b.dataset.test)));
       $('filmTips').innerHTML = [...TESTS[S.test].tips, ...COMMON_TIPS].map(x => `<li>${x}</li>`).join('');
       $('testSel3').value = S.test;
+      updateShortcutTexts();
     }
 
     function setTest(key) {
@@ -632,7 +655,36 @@
       video.load();
     }
 
-    video.addEventListener('loadedmetadata', () => {
+    // Measure the file's real frame rate by playing a few frames (muted) and reading the
+    // presentation timestamps. Slow-motion files are left alone: there the user's FPS means
+    // the capture rate, not the file's playback rate.
+    async function measureFileFps() {
+      if (!video.requestVideoFrameCallback) return null;
+      const times = [];
+      const rate = video.playbackRate;
+      video.playbackRate = 1;
+      try { await video.play(); } catch (e) { video.playbackRate = rate; return null; }
+      await new Promise(res => {
+        const timer = setTimeout(res, 1500);
+        const cb = (_now, meta) => {
+          times.push(meta.mediaTime);
+          if (times.length < 14) video.requestVideoFrameCallback(cb); else { clearTimeout(timer); res(); }
+        };
+        video.requestVideoFrameCallback(cb);
+      });
+      video.pause();
+      video.playbackRate = rate;
+      await seekTo(0);
+      const d = [];
+      for (let i = 1; i < times.length; i++) if (times[i] > times[i - 1]) d.push(times[i] - times[i - 1]);
+      if (d.length < 5) return null;
+      const fps = 1 / pctl(d, 0.5);
+      const opts = [24, 25, 30, 50, 60, 120, 240];
+      const best = opts.reduce((a, b) => (Math.abs(b - fps) < Math.abs(a - fps) ? b : a));
+      return Math.abs(best - fps) / best < 0.12 ? best : null;
+    }
+
+    video.addEventListener('loadedmetadata', async () => {
       if (!isFinite(video.duration) || video.duration <= 0) { toast('無法讀取影片長度，請換一支影片'); return; }
       layoutStage();
       S.range = { start: 0, end: video.duration };
@@ -641,6 +693,19 @@
       video.playbackRate = Number($('speedSel').value);
       unlock(3);
       goStep(3);
+      if (!S.slowmo) {
+        const token = pose.token;
+        const fps = await measureFileFps();
+        if (token !== pose.token) return;            // another file was loaded meanwhile
+        if (fps && fps !== S.fps) {
+          S.fps = fps;
+          $('fpsSel').value = String(fps);
+          store.set('jump-settings', { test: S.test, fps: S.fps, slowmo: S.slowmo });
+          updateFpsHint();
+          $('scrub').step = frameDur();
+          toast(`已自動偵測影片幀率：${fps} FPS`);
+        }
+      }
       if (estimateSamples() <= 1500) runAnalysis();
       else {
         updatePanel3();
@@ -781,6 +846,7 @@
       redetect();
       const focus = S.ev.toeOff ?? S.ev.lowest ?? S.range.start;
       await seekTo(frameTimeOf(focus));
+      if (token !== pose.token || !S.ev) return;      // a new video was loaded meanwhile
       render();
       toast(S.ev.toeOff != null ? 'AI 分析完成！請逐格確認離地（T）與落地（L）' : 'AI 分析完成，但沒有偵測到騰空，請手動設定 T 與 L');
     }
@@ -884,55 +950,94 @@
       return { groundY, standHipY };
     }
 
-    function detectEvents(tr, det, test) {
-      const F = tr.frames, n = F.length, fd = tr.fd, k = slowK();
-      // Toe lift above the floor (missing frames inherit the previous value).
-      const lift = [];
-      let last = 0;
-      F.forEach(f => { last = f.pts ? det.groundY - f.pts.toe.y : last; lift.push(last); });
+    // Fill missing samples by linear interpolation, then a 5-sample median removes single-frame spikes.
+    function cleanSeries(vals) {
+      const n = vals.length, out = vals.slice();
+      let last = -1;
+      for (let i = 0; i < n; i++) {
+        if (out[i] == null) continue;
+        if (last === -1) { for (let j = 0; j < i; j++) out[j] = out[i]; }
+        else if (i - last > 1) { for (let j = last + 1; j < i; j++) out[j] = out[last] + (out[i] - out[last]) * (j - last) / (i - last); }
+        last = i;
+      }
+      if (last === -1) return vals.map(() => 0);
+      for (let j = last + 1; j < n; j++) out[j] = out[last];
+      return out.map((_, i) => {
+        const w = [];
+        for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) w.push(out[j]);
+        return w.sort((a, b) => a - b)[Math.floor(w.length / 2)];
+      });
+    }
 
-      // Hysteresis: a flight must clear a high threshold, then edges extend with a low one.
-      // (Toe/heel landmarks drift 10–20 px while squatting without leaving the floor.)
-      const high = Math.max(20, tr.legLenPx * 0.15);
-      const low = Math.max(6, tr.legLenPx * 0.06);
+    // Ground contact without assuming one fixed floor height (a DJ starts on a box, and the
+    // athlete may land closer to / farther from the camera): a foot is on the ground when the
+    // toe is not moving AND is at its locally lowest position. Every airborne stretch is then
+    // measured against the ground levels just before and just after it.
+    function detectEvents(tr, det, test) {
+      const F = tr.frames, n = F.length, fd = tr.fd, k = slowK(), leg = tr.legLenPx;
+      const y = cleanSeries(F.map(f => (f.pts ? f.pts.toe.y : null)));
+      const dtReal = tr.step / k;
+      const win = Math.max(2, Math.round(0.3 / dtReal));
+      const vth = 1.2 * leg;           // px per real second still counted as "not moving"
+      const tol = 0.05 * leg;
+      const high = Math.max(20, leg * 0.15);
+      // MediaPipe's toe point sits ~7 % of leg length above the real shoe tip when the foot
+      // touches down pointed; 8 % was calibrated frame-by-frame on CMJ, SJ and DJ clips.
+      const low = Math.max(6, leg * 0.08);
+
+      const contact = y.map((yi, i) => {
+        const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+        const v = Math.abs(y[b] - y[a]) / (dtReal * Math.max(1, b - a));
+        let mx = -Infinity;
+        for (let j = Math.max(0, i - win); j <= Math.min(n - 1, i + win); j++) mx = Math.max(mx, y[j]);
+        return v < vth && yi >= mx - tol;
+      });
+
+      // Airborne stretches = runs of non-contact samples that rise clearly above the next ground level.
       const segs = [];
       for (let i = 0; i < n; i++) {
-        if (lift[i] <= high) continue;
-        let s = i, e = i;
-        while (e + 1 < n && lift[e + 1] > high) e++;
-        while (s - 1 >= 0 && lift[s - 1] > low) s--;
-        while (e + 1 < n && lift[e + 1] > low) e++;
-        if (e - s + 1 >= 3) {
-          let peak = 0;
-          for (let j = s; j <= e; j++) peak = Math.max(peak, lift[j]);
-          segs.push({ s, e, peak });
+        if (contact[i]) continue;
+        let e = i;
+        while (e + 1 < n && !contact[e + 1]) e++;
+        const prevLevel = i > 0 ? y[i - 1] : y[i];
+        const nextLevel = e + 1 < n ? y[e + 1] : y[e];
+        let top = i;
+        for (let j = i; j <= e; j++) if (y[j] < y[top]) top = j;
+        const peak = nextLevel - y[top];
+        if (peak > high && e + 1 < n) {
+          segs.push({ s: i, e, top, peak, prevLevel, nextLevel,
+                      type: nextLevel - prevLevel > 0.1 * leg ? 'drop' : 'flight' });
         }
         i = e;
       }
 
       const fStart = (i) => F[i].fi * fd;
-      const edgeStart = (s) => (s > 0 ? (fStart(s - 1) + fStart(s) + fd) / 2 : fStart(s));
-      const edgeEnd = (e) => (e + 1 < n ? (fStart(e) + fStart(e + 1) + fd) / 2 : fStart(e) + fd);
-      const ev = { dropLanding: null, lowest: null, toeOff: null, apex: null, landing: null, landingLowest: null };
+      const edge = (i) => (i > 0 ? (fStart(i - 1) + fStart(i) + fd) / 2 : fStart(i));   // start of sample i
+      // first sample (from s) rising more than `low` above the take-off level
+      const takeoffIdx = (sg) => { for (let i = Math.max(1, sg.s - 2); i <= sg.top; i++) if (sg.prevLevel - y[i] > low) return i; return sg.s; };
+      // first sample after the top that is back within `low` of the landing level
+      const landIdx = (sg) => { for (let i = sg.top; i < n; i++) if (sg.nextLevel - y[i] <= low) return i; return Math.min(n - 1, sg.e + 1); };
 
+      const ev = { dropLanding: null, lowest: null, toeOff: null, apex: null, landing: null, landingLowest: null };
+      const flights = segs.filter(sg => sg.type === 'flight');
       let flight = null;
       if (test === 'DJ') {
-        const first = segs[0];
-        const drop = first && first.s <= Math.max(2, n * 0.05) ? first : null;
-        const rest = segs.filter(sg => sg !== drop && (!drop || sg.s > drop.e));
-        if (drop) ev.dropLanding = edgeEnd(drop.e);
-        flight = rest.length ? rest.reduce((a, b) => (b.peak > a.peak ? b : a)) : null;
-        if (!drop && rest.length >= 2) {           // clip started mid-drop
-          ev.dropLanding = edgeEnd(rest[0].e);
-          flight = rest.slice(1).reduce((a, b) => (b.peak > a.peak ? b : a));
+        const drops = segs.filter(sg => sg.type === 'drop');
+        const afterDrop = drops.length ? flights.filter(sg => sg.s > drops[0].e) : flights;
+        flight = afterDrop.length ? afterDrop.reduce((a, b) => (b.peak > a.peak ? b : a)) : null;
+        let drop = flight ? [...drops].reverse().find(sg => sg.e < flight.s) : drops[drops.length - 1];
+        if (!drop && flight) {                         // no box detected: take the airborne stretch just before
+          const before = segs.filter(sg => sg.e < flight.s);
+          drop = before[before.length - 1] || null;
         }
+        if (drop) ev.dropLanding = edge(landIdx(drop));
       } else {
-        const cands = segs.filter(sg => sg.s > 0);
-        flight = cands.length ? cands.reduce((a, b) => (b.peak > a.peak ? b : a)) : null;
+        flight = flights.length ? flights.reduce((a, b) => (b.peak > a.peak ? b : a)) : null;
       }
       if (flight) {
-        ev.toeOff = edgeStart(flight.s);
-        ev.landing = edgeEnd(flight.e);
+        ev.toeOff = edge(takeoffIdx(flight));
+        ev.landing = edge(landIdx(flight));
+        det.groundY = flight.nextLevel;                // draw the floor where the athlete lands
       }
 
       // Hip extremes (image y grows downward).
@@ -1199,6 +1304,7 @@
     }
     $('btnPlay').addEventListener('click', togglePlay);
     $('btnPlay2').addEventListener('click', togglePlay);
+    $('barSetD').addEventListener('click', () => setEventHere('dropLanding'));
     $('barSetT').addEventListener('click', () => setEventHere('toeOff'));
     $('barSetL').addEventListener('click', () => setEventHere('landing'));
     $('barResults').addEventListener('click', () => $('btnToResults').click());
@@ -1242,7 +1348,8 @@
       else if (e.key === 'ArrowRight') { e.preventDefault(); stepFrames(e.shiftKey ? 10 : 1); }
       else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       else if (e.key === 't' || e.key === 'T') setEventHere('toeOff');
-      else if (e.key === 'l' || e.key === 'L') setEventHere('landing');
+      else if (e.key === 'l' || e.key === 'L' || (S.test === 'DJ' && e.key === '2')) setEventHere('landing');
+      else if (S.test === 'DJ' && (e.key === 'd' || e.key === 'D' || e.key === '1')) setEventHere('dropLanding');
     });
 
     // ---------------------------------------------------------------------
@@ -1329,6 +1436,8 @@
         ['跳躍高度', m.heightCm != null ? `${fmt(m.heightCm)} cm` : '—']
       ];
       if (S.test === 'DJ') cells.push(['觸地時間', m.contactMs != null ? `${fmt(m.contactMs, 0)} ms` : '—'], ['RSI', fmt(m.rsi, 2)]);
+      if (S.test === 'SJ') cells.push(['靜蹲時間', m.sjNoHold ? '未偵測到' : `${fmt(m.sjHoldS)} s`],
+        ['起跳前下沉', m.sjPass == null ? '—' : `${fmt(m.sjDipCm)} cm ${m.sjPass ? '✓' : '✗'}`]);
       $('liveResult').innerHTML = cells.map(([a, b]) => `<div class="bg-slate-900 rounded-xl p-2.5 text-center"><div class="text-[11px] text-slate-400">${a}</div><div class="big-num text-lg text-emerald-300 mt-1">${b}</div></div>`).join('');
       $('btnToResults').disabled = m.flightS == null;
       $('barResults').classList.toggle('hidden', m.flightS == null);
@@ -1343,6 +1452,12 @@
       let html = '';
       if (S.range.start > 0 || S.range.end < dur - 1e-3) {
         html += `<div class="absolute top-1 h-1.5 bg-emerald-500/30 rounded" style="left:${S.range.start / dur * 100}%;width:${(S.range.end - S.range.start) / dur * 100}%"></div>`;
+      }
+      if (S.ev && S.test === 'SJ') {
+        const sj = sjCheck();
+        if (sj.sjHoldStart != null) {
+          html += `<div class="absolute top-0 h-3 rounded bg-sky-400/35 border border-sky-300/60" title="靜蹲 ${fmt(sj.sjHoldS)} s" style="left:${sj.sjHoldStart / dur * 100}%;width:${(sj.sjHoldEnd - sj.sjHoldStart) / dur * 100}%"><span class="absolute -top-5 left-1 text-[10px] font-bold text-sky-300 whitespace-nowrap">靜蹲 ${fmt(sj.sjHoldS)}s</span></div>`;
+        }
       }
       if (S.ev) {
         eventDefs().forEach(d => {
@@ -1401,30 +1516,49 @@
       return m;
     }
 
-    // SJ must start from a still squat: no extra dip right before pushing up.
+    // SJ must start from a STILL squat and push straight up.
+    //  1. squat hold = the longest stretch (within 5 s before toe-off) where the knee is flexed
+    //     ≥ 45° and the hip stays inside a ±1.5 cm band;
+    //  2. dip = how far the hip sinks below that hold level between the end of the hold and
+    //     toe-off (a countermovement). More than 1.5 cm → FAIL.
     function sjCheck() {
       const ev = S.ev, tr = S.track, k = slowK();
-      if (ev.lowest == null || ev.toeOff == null) return {};
+      if (ev.toeOff == null) return {};
       const ppc = pxPerCm();
-      const F = tr.frames.filter(f => f.pts && f.t <= ev.toeOff);
-      const lowY = ptsAt(ev.lowest).hip.y;
-      // propulsion start = last frame (before toe-off) still within 1 cm of the lowest hip height
-      let ps = ev.lowest;
-      F.forEach(f => { if (f.t >= ev.lowest && lowY - f.pts.hip.y <= ppc) ps = f.t; });
-      const psY = ptsAt(ps).hip.y;
-      // hold = how long the hip stayed within ±1.5 cm before propulsion
-      let holdStart = ps;
-      for (let i = F.length - 1; i >= 0; i--) {
-        const f = F[i];
-        if (f.t > ps) continue;
-        if (Math.abs(f.pts.hip.y - psY) <= 1.5 * ppc) holdStart = f.t; else break;
+      const band = 1.5 * ppc;
+      const F = tr.frames
+        .filter(f => f.pts && f.t < ev.toeOff && f.t >= ev.toeOff - 5 * k)
+        .map(f => ({ t: f.t, hipY: f.pts.hip.y, ...jointAngles(f.pts) }));
+      if (F.length < 3) return {};
+
+      let best = null;
+      for (let i = 0; i < F.length; i++) {
+        if (F[i].kneeFlex < 45) continue;
+        let lo = F[i].hipY, hi = lo, j = i;
+        while (j + 1 < F.length && F[j + 1].kneeFlex >= 45) {
+          const y = F[j + 1].hipY;
+          if (Math.max(hi, y) - Math.min(lo, y) > 2 * band) break;
+          lo = Math.min(lo, y); hi = Math.max(hi, y); j++;
+        }
+        if (!best || F[j].t - F[i].t > best.dur) best = { i, j, dur: F[j].t - F[i].t };
       }
-      const holdS = (ps - holdStart) / k;
-      // dip = how much lower the hip is at propulsion start than 0.3–0.8 s before it
-      const win = F.filter(f => f.t >= ps - 0.8 * k && f.t <= ps - 0.3 * k);
-      const ref = win.length ? pctl(win.map(f => f.pts.hip.y), 0.5) : psY;
-      const dipCm = Math.max(0, (psY - ref) / ppc);
-      return { sjHoldS: holdS, sjDipCm: dipCm, sjPass: dipCm <= 1.5 };
+      // a real SJ hold lasts at least 0.5 s; the instant at the bottom of a CMJ does not count
+      if (!best || best.dur / k < 0.5) {
+        return { sjPass: false, sjNoHold: true, sjHoldS: best ? best.dur / k : 0, sjDipCm: null };
+      }
+      const seg = F.slice(best.i, best.j + 1);
+      const holdY = pctl(seg.map(f => f.hipY), 0.5);
+      let deepest = holdY;
+      F.forEach(f => { if (f.t > F[best.j].t) deepest = Math.max(deepest, f.hipY); });
+      const dipCm = Math.max(0, (deepest - holdY) / ppc);
+      return {
+        sjHoldS: best.dur / k,
+        sjHoldStart: F[best.i].t, sjHoldEnd: F[best.j].t,
+        sjHoldKnee: pctl(seg.map(f => f.kneeFlex), 0.5),
+        sjHoldHip: pctl(seg.map(f => f.hipFlex), 0.5),
+        sjDipCm: dipCm,
+        sjPass: dipCm <= 1.5
+      };
     }
 
     function getAdvice(m) {
@@ -1440,8 +1574,10 @@
       if (S.test === 'SJ') {
         if (m.sjPass === false) add(false, `起跳前有往下沉（${fmt(m.sjDipCm)} cm）`, 'SJ 必須從靜止蹲姿直接向上，這次可能混入反向動作，建議重跳。');
         else if (m.sjPass) add(true, `起跳前沒有下沉（${fmt(m.sjDipCm)} cm）`, '符合 SJ 靜止起跳的要求。');
-        if (m.sjHoldS != null && m.sjHoldS < 1) add(null, `靜蹲時間偏短（${fmt(m.sjHoldS)} 秒）`, '建議蹲住 2–3 秒再起跳，結果更穩定。');
-        if (m.kneeLow != null) add(m.kneeLow >= 70 && m.kneeLow <= 110 ? true : null, `蹲姿膝屈曲 ${fmt(m.kneeLow, 0)}°`, '常見要求約 90°（70–110°）。');
+        if (m.sjNoHold) add(false, `沒有靜止蹲住（最長只停 ${fmt(m.sjHoldS, 2)} 秒）`, 'SJ 要先蹲好停住 2–3 秒再直接起跳，這次比較像 CMJ，建議重跳。');
+        else if (m.sjHoldS != null && m.sjHoldS < 1) add(null, `靜蹲時間偏短（${fmt(m.sjHoldS)} 秒）`, '建議蹲住 2–3 秒再起跳，結果更穩定。');
+        else if (m.sjHoldS != null) add(true, `有靜止蹲住 ${fmt(m.sjHoldS)} 秒`, '');
+        if (m.sjHoldKnee != null) add(m.sjHoldKnee >= 70 && m.sjHoldKnee <= 110 ? true : null, `靜蹲時膝屈曲 ${fmt(m.sjHoldKnee, 0)}°`, '常見要求約 90°（70–110°）。');
       }
       if (S.test === 'DJ') {
         if (m.contactMs != null) {
@@ -1485,8 +1621,9 @@
       $('resultCards').innerHTML = cards;
 
       const ang = (label, v, isAnkle = false) => `<div class="bg-slate-900 rounded-xl p-2.5"><div class="text-[11px] text-slate-400">${label}</div><div class="mono font-bold mt-0.5">${isAnkle ? signed(v) : fmt(v)}°</div></div>`;
-      const lowName = S.test === 'DJ' ? '觸地最低' : S.test === 'SJ' ? '蹲姿' : '下蹲最低';
-      $('angleCards').innerHTML = ang(`${lowName}・膝屈曲`, m.kneeLow) + ang(`${lowName}・髖屈曲`, m.hipLow)
+      const lowName = S.test === 'DJ' ? '觸地最低' : S.test === 'SJ' ? '靜蹲' : '下蹲最低';
+      const sjHold = S.test === 'SJ' && m.sjHoldKnee != null;
+      $('angleCards').innerHTML = ang(`${lowName}・膝屈曲`, sjHold ? m.sjHoldKnee : m.kneeLow) + ang(`${lowName}・髖屈曲`, sjHold ? m.sjHoldHip : m.hipLow)
         + ang('離地・膝屈曲', m.kneeTO) + ang('離地・踝', m.ankleTO, true)
         + ang('落地最大・膝屈曲', m.kneeLand) + ang('落地最大・髖屈曲', m.hipLand);
 
@@ -1776,7 +1913,8 @@
         </div>
         <table style="margin-bottom:10px">
           <tr><th>關節角度（0° = 站直／中立）</th><th>膝屈曲</th><th>髖屈曲</th><th>踝（+背屈／−蹠屈）</th></tr>
-          <tr><td>${S.test === 'DJ' ? '觸地最低點' : S.test === 'SJ' ? '蹲姿最低點' : '下蹲最低點'}</td><td>${fmt(m.kneeLow)}°</td><td>${fmt(m.hipLow)}°</td><td>${signed(m.ankleLow)}°</td></tr>
+          ${S.test === 'SJ' && m.sjHoldKnee != null ? `<tr><td>靜蹲（${fmt(m.sjHoldS)} s）</td><td>${fmt(m.sjHoldKnee)}°</td><td>${fmt(m.sjHoldHip)}°</td><td>—</td></tr>` : ''}
+          <tr><td>${S.test === 'DJ' ? '觸地最低點' : S.test === 'SJ' ? '起跳前最低點' : '下蹲最低點'}</td><td>${fmt(m.kneeLow)}°</td><td>${fmt(m.hipLow)}°</td><td>${signed(m.ankleLow)}°</td></tr>
           <tr><td>離地瞬間</td><td>${fmt(m.kneeTO)}°</td><td>${fmt(m.hipTO)}°</td><td>${signed(m.ankleTO)}°</td></tr>
           <tr><td>落地緩衝（最大）</td><td>${fmt(m.kneeLand)}°</td><td>${fmt(m.hipLand)}°</td><td>—</td></tr>
         </table>
@@ -1805,7 +1943,7 @@
     (function init() {
       const st = store.get('jump-settings', {});
       if (st.test && TESTS[st.test]) S.test = st.test;
-      if ([30, 60, 120, 240].includes(st.fps)) S.fps = st.fps;
+      if ([24, 25, 30, 50, 60, 120, 240].includes(st.fps)) S.fps = st.fps;
       S.slowmo = !!st.slowmo;
       $('fpsSel').value = String(S.fps);
       $('slowSel').value = S.slowmo ? '1' : '0';
