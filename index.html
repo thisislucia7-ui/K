@@ -112,7 +112,7 @@
   </header>
 
   <!-- Stepper -->
-  <nav class="sticky top-0 z-30 bg-[#0b1120]/90 backdrop-blur py-2">
+  <nav class="sticky top-0 z-30 bg-[#0b1120] py-2">
     <div class="wrap-w max-w-7xl mx-auto px-4">
       <div class="card p-1.5 grid grid-cols-4 gap-1" id="stepper">
         <button class="step-btn" data-step="1"><span class="num">1</span><span class="desk-only">安全確認</span><span class="mob-only">安全</span></button>
@@ -142,8 +142,11 @@
           <span id="videoNameLabel" class="desk-only text-xs text-slate-500 truncate max-w-[40%]"></span>
         </div>
         <div id="videoWrap" class="relative mx-auto bg-black rounded-xl overflow-hidden">
-          <video id="video" class="absolute inset-0 w-full h-full" playsinline muted preload="auto"></video>
-          <canvas id="overlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+          <!-- The <video> only decodes frames; it is kept invisible because on some Windows
+               graphics drivers the browser paints it solid white. Every frame is drawn onto
+               the canvas below together with the exoskeleton. -->
+          <video id="video" class="absolute inset-0 w-full h-full opacity-0 pointer-events-none" playsinline muted preload="auto"></video>
+          <canvas id="overlay" class="absolute inset-0 w-full h-full pointer-events-none bg-black"></canvas>
           <div id="analyzeBox" class="hidden absolute inset-0 bg-slate-950/75 grid place-items-center p-6 text-center">
             <div class="w-full max-w-xs">
               <div class="text-3xl mb-2">🤖</div>
@@ -391,7 +394,7 @@
   </div>
 
   <!-- Phone bottom bar (step 3) -->
-  <div id="mobileBar" class="hidden mob-only fixed inset-x-0 bottom-0 z-40 bg-[#0b1120]/95 backdrop-blur border-t border-slate-800 px-3 pt-2">
+  <div id="mobileBar" class="hidden mob-only fixed inset-x-0 bottom-0 z-40 bg-[#0b1120] border-t border-slate-800 px-3 pt-2">
    <div class="wrap-w mx-auto space-y-2">
     <div class="flex items-center justify-between text-xs">
       <span class="mono text-slate-300" id="barStatus">—</span>
@@ -737,6 +740,15 @@
 
       const { fd, i0, stride, total } = samplingPlan();
       const vw = video.videoWidth, vh = video.videoHeight;
+      // Feed the model a 2D-canvas copy of each frame instead of the <video> element itself.
+      // Handing the video element straight to the GPU (WebGL) model makes it render
+      // blank/white on some Windows graphics drivers. Long side capped at 1280 px for speed;
+      // landmarks are normalised, so they map back to full video pixels unchanged.
+      const gScale = Math.min(1, 1280 / Math.max(vw, vh));
+      const grab = document.createElement('canvas');
+      grab.width = Math.round(vw * gScale);
+      grab.height = Math.round(vh * gScale);
+      const gctx = grab.getContext('2d', { willReadFrequently: true });
       const raw = [];
       for (let n = 0; n < total; n++) {
         if (token !== pose.token) return;
@@ -745,8 +757,10 @@
         await seekTo(t);
         let res = null;
         try {
+          gctx.drawImage(video, 0, 0, grab.width, grab.height);
+          if (n % 2 === 0) drawVideoFrame(octx, overlay.width, overlay.height);
           pose.ts = Math.max(pose.ts + 1, Math.round(performance.now()));
-          res = lm.detectForVideo(video, pose.ts);
+          res = lm.detectForVideo(grab, pose.ts);
         } catch (e) { res = null; }
         const L = res && res.landmarks && res.landmarks[0];
         raw.push({ t, fi, lms: L ? L.map(p => ({ x: p.x * vw, y: p.y * vh, v: p.visibility ?? 1 })) : null });
@@ -1116,9 +1130,17 @@
       }
     }
 
+    function drawVideoFrame(g, W, H) {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, W, H);
+      if (video.readyState >= 2) {
+        try { g.drawImage(video, 0, 0, W, H); } catch (e) { /* frame not ready */ }
+      }
+    }
+
     function render() {
       const t = video.currentTime || 0;
-      octx.clearRect(0, 0, overlay.width, overlay.height);
+      drawVideoFrame(octx, overlay.width, overlay.height);
       drawScene(octx, t, overlay.width, overlay.height);
       updateReadout(t);
       if (document.activeElement !== $('scrub')) $('scrub').value = t;
@@ -1159,6 +1181,7 @@
     video.addEventListener('pause', () => { setPlayLabels(false); render(); });
     video.addEventListener('ended', () => setPlayLabels(false));
     video.addEventListener('seeked', () => { if (!S.analyzing) render(); });
+    video.addEventListener('loadeddata', () => { if (!S.analyzing) render(); });
 
     function togglePlay() {
       if (S.analyzing || !video.currentSrc) return;
