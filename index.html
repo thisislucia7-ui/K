@@ -241,9 +241,9 @@
               <span id="hudPhaseText" class="font-bold text-emerald-400">準備期 (Preparation)</span>
             </div>
             <div class="flex items-center gap-3 font-mono text-[11px]">
-              <span class="text-amber-300">髖 Hip: <strong id="hudHipAngle">180°</strong></span>
-              <span class="text-cyan-300">膝 Knee: <strong id="hudKneeAngle">180°</strong></span>
-              <span class="text-rose-300">踝 Ankle: <strong id="hudAnkleAngle">92°</strong></span>
+              <span class="text-amber-300">髖 Hip: <strong id="hudHipAngle">0°</strong></span>
+              <span class="text-cyan-300">膝 Knee: <strong id="hudKneeAngle">0°</strong></span>
+              <span class="text-rose-300">踝 Ankle: <strong id="hudAnkleAngle">0°</strong></span>
             </div>
             <div class="text-[11px] font-mono text-slate-400">
               腳尖高度 ΔY: <strong id="hudToeClearance" class="text-white">0.0 cm</strong> ｜ 地面狀態: <strong id="hudGroundState" class="text-emerald-400">觸地 (On Ground)</strong>
@@ -392,7 +392,7 @@
                 <th class="py-1.5">外骨骼標記點</th>
                 <th class="py-1.5">側面解剖基準</th>
                 <th class="py-1.5 text-right">畫面座標 (X, Y)</th>
-                <th class="py-1.5 text-right">夾角 / 狀態</th>
+                <th class="py-1.5 text-right" title="髖/膝：0°=伸直，越大越屈曲；踝：0°=中立 90°，+背屈 −蹠屈">角度 (0°=中立) / 狀態</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/60 text-slate-200">
@@ -400,19 +400,19 @@
                 <td class="py-1.5 font-sans font-semibold text-amber-300">● 髖關節 (Hip)</td>
                 <td class="py-1.5 font-sans text-slate-400 text-[11px]">股骨大轉子</td>
                 <td id="tableHipCoord" class="py-1.5 text-right">(392, 218)</td>
-                <td id="tableHipAngle" class="py-1.5 text-right text-amber-300">180.0°</td>
+                <td id="tableHipAngle" class="py-1.5 text-right text-amber-300">0.0°</td>
               </tr>
               <tr>
                 <td class="py-1.5 font-sans font-semibold text-cyan-300">● 膝關節 (Knee)</td>
                 <td class="py-1.5 font-sans text-slate-400 text-[11px]">股骨外上髁</td>
                 <td id="tableKneeCoord" class="py-1.5 text-right">(404, 302)</td>
-                <td id="tableKneeAngle" class="py-1.5 text-right text-cyan-300">180.0°</td>
+                <td id="tableKneeAngle" class="py-1.5 text-right text-cyan-300">0.0°</td>
               </tr>
               <tr>
                 <td class="py-1.5 font-sans font-semibold text-rose-300">● 踝關節 (Ankle)</td>
                 <td class="py-1.5 font-sans text-slate-400 text-[11px]">腓骨外踝</td>
                 <td id="tableAnkleCoord" class="py-1.5 text-right">(396, 382)</td>
-                <td id="tableAnkleAngle" class="py-1.5 text-right text-rose-300">92.0°</td>
+                <td id="tableAnkleAngle" class="py-1.5 text-right text-rose-300">0.0°</td>
               </tr>
               <tr>
                 <td class="py-1.5 font-sans font-semibold text-emerald-300">▲ 腳尖點 (Toe)</td>
@@ -771,7 +771,7 @@
         // Squat Jump: starts standing straight (frames 0..18), lowers into squat (18..34), then holds static squat (34..72)
         if (frame < 18) {
           squatDepth = 0;
-          phaseLabel = '站立準備期 (膝關節完全伸直 180°)';
+          phaseLabel = '站立準備期 (膝關節完全伸直 0°)';
         } else if (frame < 34) {
           const p = (frame - 18) / (34 - 18);
           squatDepth = 0.85 * Math.sin(p * Math.PI * 0.5);
@@ -911,7 +911,7 @@
       // Compute joint angles (degrees)
       const hipAngle = calcAngleDeg(shoulder, finalHip, finalKnee);
       const kneeAngle = calcAngleDeg(finalHip, finalKnee, finalAnkle);
-      const ankleAngle = calcAngleDeg(finalKnee, finalAnkle, finalToe);
+      const clinical = toClinicalAngles(hipAngle, kneeAngle, finalKnee, finalAnkle, finalToe, null);
 
       return {
         frame,
@@ -925,9 +925,7 @@
         toe: finalToe,
         shoulder,
         head,
-        hipAngle: hipAngle.toFixed(1),
-        kneeAngle: kneeAngle.toFixed(1),
-        ankleAngle: ankleAngle.toFixed(1)
+        ...clinical
       };
     }
 
@@ -939,6 +937,27 @@
       const magCB = Math.hypot(CBx, CBy) || 1;
       const cosVal = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
       return (Math.acos(cosVal) * 180) / Math.PI;
+    }
+
+    // Clinical joint-angle convention (same as JumpLab): 0° = anatomical neutral.
+    //   Hip / Knee flexion = 180° − included angle  (standing straight = 0°, larger = more flexed)
+    //   Ankle = 90° − angle between shank and foot sole (neutral 90° = 0°;
+    //           + dorsiflexion, − plantarflexion). The foot sole is heel → toe;
+    //           when no heel landmark exists it is approximated below the ankle.
+    function toClinicalAngles(hipIncluded, kneeIncluded, knee, ankle, toe, heel) {
+      const footLen = Math.hypot(toe.x - ankle.x, toe.y - ankle.y);
+      const h = heel || { x: ankle.x, y: ankle.y + footLen * 0.3 };
+      const shank = { x: knee.x - ankle.x, y: knee.y - ankle.y };
+      const foot = { x: toe.x - h.x, y: toe.y - h.y };
+      const cosVal = (shank.x * foot.x + shank.y * foot.y) /
+        ((Math.hypot(shank.x, shank.y) || 1) * (Math.hypot(foot.x, foot.y) || 1));
+      const shankFootDeg = (Math.acos(Math.max(-1, Math.min(1, cosVal))) * 180) / Math.PI;
+      const fmt = (v) => (Math.abs(v) < 0.05 ? 0 : v).toFixed(1);
+      return {
+        hipAngle: fmt(Math.max(0, 180 - hipIncluded)),
+        kneeAngle: fmt(Math.max(0, 180 - kneeIncluded)),
+        ankleAngle: fmt(90 - shankFootDeg)
+      };
     }
 
     // =========================================================================
@@ -1307,7 +1326,7 @@
 
         const hipAngle = calcAngleDeg({ x: shoulderX, y: shoulderY }, { x: hipX, y: hipY }, { x: kneeX, y: kneeY });
         const kneeAngle = calcAngleDeg({ x: hipX, y: hipY }, { x: kneeX, y: kneeY }, { x: ankleX, y: ankleY });
-        const ankleAngle = calcAngleDeg({ x: kneeX, y: kneeY }, { x: ankleX, y: ankleY }, { x: toeX, y: toeY });
+        const clinical = toClinicalAngles(hipAngle, kneeAngle, { x: kneeX, y: kneeY }, { x: ankleX, y: ankleY }, { x: toeX, y: toeY }, null);
 
         let phaseLabel = 'AI 視覺動態追蹤：站立準備期';
         if (isAirborne) {
@@ -1332,7 +1351,7 @@
 
         const statusEl = document.getElementById('aiSyncStatusText');
         if (statusEl) {
-          statusEl.textContent = `逐幀髖屈/膝屈角度修正中 (髖 ${hipAngle.toFixed(0)}°・膝 ${kneeAngle.toFixed(0)}° ｜ 衣/褲/鞋色定位)`;
+          statusEl.textContent = `逐幀髖屈/膝屈角度修正中 (髖屈 ${clinical.hipAngle}°・膝屈 ${clinical.kneeAngle}° ｜ 衣/褲/鞋色定位)`;
         }
 
         return {
@@ -1347,13 +1366,309 @@
           toe: { x: toeX, y: toeY },
           shoulder: { x: shoulderX, y: shoulderY },
           head: { x: headX, y: headY },
-          hipAngle: hipAngle.toFixed(1),
-          kneeAngle: kneeAngle.toFixed(1),
-          ankleAngle: ankleAngle.toFixed(1),
+          ...clinical,
           groundY: Math.round(gY)
         };
       }
       return null;
+    }
+
+    // =========================================================================
+    // MediaPipe Pose Landmarker — real per-frame keypoints for imported videos.
+    // The whole clip is analysed once (Stage 1), then playback simply looks up
+    // the stored pose for the current video time, so the exoskeleton never lags.
+    // =========================================================================
+    const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+    const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+    const ASSUMED_LEG_LEN_CM = 82; // greater trochanter -> lateral malleolus, used only for cm display
+
+    const poseEngine = {
+      landmarker: null,
+      loading: null,
+      failed: false,
+      lastTs: 0,
+      track: null,
+      analyzing: false,
+      analyzeToken: 0
+    };
+
+    function loadPoseLandmarker() {
+      if (poseEngine.landmarker) return Promise.resolve(poseEngine.landmarker);
+      if (poseEngine.failed) return Promise.resolve(null);
+      if (!poseEngine.loading) {
+        poseEngine.loading = (async () => {
+          const vision = await import(`${MP_BASE}/vision_bundle.mjs`);
+          const fileset = await vision.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+          const make = (delegate) => vision.PoseLandmarker.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath: MP_MODEL, delegate },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.5,
+            minPosePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          });
+          try {
+            return await make('GPU');
+          } catch (gpuErr) {
+            return await make('CPU');
+          }
+        })().then(lm => {
+          poseEngine.landmarker = lm;
+          return lm;
+        }).catch(err => {
+          console.warn('MediaPipe Pose 載入失敗，改用舊版光流估計：', err);
+          poseEngine.failed = true;
+          return null;
+        });
+      }
+      return poseEngine.loading;
+    }
+
+    function seekVideoTo(video, t) {
+      return new Promise(resolve => {
+        if (Math.abs(video.currentTime - t) < 1e-4 && video.readyState >= 2) return resolve();
+        const done = () => {
+          video.removeEventListener('seeked', done);
+          resolve();
+        };
+        video.addEventListener('seeked', done);
+        video.currentTime = t;
+      });
+    }
+
+    // Returns true (analysed), false (model unavailable) or 'cancelled'.
+    async function analyzeImportedVideo(onProgress) {
+      const token = ++poseEngine.analyzeToken;
+      const lm = await loadPoseLandmarker();
+      if (token !== poseEngine.analyzeToken) return 'cancelled';
+      if (!lm) return false;
+
+      const v = sourceVideo;
+      const dur = v.duration;
+      const vw = v.videoWidth;
+      const vh = v.videoHeight;
+      const step = Math.max(1 / 60, dur / 2400);
+      const n = Math.floor(dur / step) + 1;
+      const raw = [];
+      v.pause();
+
+      for (let i = 0; i < n; i++) {
+        if (token !== poseEngine.analyzeToken) return 'cancelled';
+        const t = Math.min(Math.max(0, dur - 0.001), i * step);
+        await seekVideoTo(v, t);
+        let res = null;
+        try {
+          poseEngine.lastTs = Math.max(poseEngine.lastTs + 1, Math.round(performance.now()));
+          res = lm.detectForVideo(v, poseEngine.lastTs);
+        } catch (err) {
+          res = null;
+        }
+        const lms = res && res.landmarks && res.landmarks[0];
+        raw.push({
+          t,
+          lms: lms ? lms.map(p => ({ x: p.x * vw, y: p.y * vh, v: p.visibility ?? 1 })) : null
+        });
+        if (onProgress && (i % 3 === 0 || i === n - 1)) onProgress((i + 1) / n);
+      }
+
+      poseEngine.track = buildPoseTrack(raw, step);
+      if (poseEngine.track) poseEngine.track.src = v.currentSrc;
+      return !!poseEngine.track;
+    }
+
+    function buildPoseTrack(raw, step) {
+      const valid = raw.filter(r => r.lms);
+      if (valid.length < 5) return null;
+
+      // Side view: use the body side that faces the camera (higher visibility).
+      const vis = (ids) => valid.reduce((s, r) => s + ids.reduce((a, i) => a + r.lms[i].v, 0), 0);
+      const side = vis([11, 23, 25, 27, 31]) >= vis([12, 24, 26, 28, 32]) ? 'L' : 'R';
+      const idx = side === 'L'
+        ? { shoulder: 11, hip: 23, knee: 25, ankle: 27, heel: 29, toe: 31, ear: 7 }
+        : { shoulder: 12, hip: 24, knee: 26, ankle: 28, heel: 30, toe: 32, ear: 8 };
+      const names = Object.keys(idx);
+
+      const picked = raw.map(r => {
+        if (!r.lms) return { t: r.t, pts: null };
+        const pts = {};
+        names.forEach(nm => {
+          const p = r.lms[idx[nm]];
+          pts[nm] = { x: p.x, y: p.y };
+        });
+        return { t: r.t, pts };
+      });
+
+      // Zero-phase [1,2,1] smoothing: removes jitter without adding delay.
+      const frames = picked.map((f, i) => {
+        if (!f.pts) return f;
+        const pts = {};
+        names.forEach(nm => {
+          let sx = 0, sy = 0, sw = 0;
+          [[-1, 1], [0, 2], [1, 1]].forEach(([o, w]) => {
+            const g = picked[i + o];
+            if (g && g.pts) {
+              sx += g.pts[nm].x * w;
+              sy += g.pts[nm].y * w;
+              sw += w;
+            }
+          });
+          pts[nm] = { x: sx / sw, y: sy / sw };
+        });
+        return { t: f.t, pts };
+      });
+
+      const ok = frames.filter(f => f.pts);
+      const pctl = (arr, p) => {
+        const s = [...arr].sort((a, b) => a - b);
+        return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))];
+      };
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+      const groundY = pctl(ok.map(f => f.pts.toe.y), 0.75);
+      const legLenPx = pctl(ok.map(f => dist(f.pts.hip, f.pts.knee) + dist(f.pts.knee, f.pts.ankle)), 0.5);
+      const pxPerCm = Math.max(0.5, legLenPx / ASSUMED_LEG_LEN_CM);
+      const facingDir = pctl(ok.map(f => f.pts.toe.x - f.pts.heel.x), 0.5) >= 0 ? 1 : -1;
+
+      // Flight detection with hysteresis on toe lift. While squatting / pushing
+      // off, the toe & heel landmarks drift 10-20 px without leaving the floor,
+      // so a flight must first clear a high threshold (core), then its edges
+      // are extended outward with a low threshold for precise toe-off/landing.
+      const lift = frames.map(f => (f.pts ? groundY - f.pts.toe.y : 0));
+      const highThresh = Math.max(20, legLenPx * 0.15);
+      const lowThresh = Math.max(6, legLenPx * 0.06);
+      const airborne = frames.map(() => false);
+      const segments = [];
+      for (let i = 0; i < frames.length; i++) {
+        if (lift[i] <= highThresh) continue;
+        let s = i, e = i;
+        while (e + 1 < frames.length && lift[e + 1] > highThresh) e++;
+        while (s - 1 >= 0 && lift[s - 1] > lowThresh) s--;
+        while (e + 1 < frames.length && lift[e + 1] > lowThresh) e++;
+        if (e - s + 1 >= 3) {
+          for (let k = s; k <= e; k++) airborne[k] = true;
+          let peak = 0;
+          for (let k = s; k <= e; k++) peak = Math.max(peak, lift[k]);
+          segments.push({ s, e, peak });
+        }
+        i = e;
+      }
+
+      const events = { toeOffT: null, landingT: null, flightS: null, jumpHeightCm: null, lowestSquatT: null, apexT: null };
+      // Main flight = highest lift, ignoring a segment that starts at frame 0
+      // (e.g. standing on a DJ box when the clip begins).
+      const candidates = segments.filter(sg => sg.s > 0);
+      if (candidates.length) {
+        const best = candidates.reduce((a, b) => (b.peak > a.peak ? b : a));
+        const s0 = best.s, s1 = best.e;
+        events.toeOffT = Math.max(0, frames[s0].t - step / 2);
+        events.landingT = s1 + 1 < frames.length ? frames[s1 + 1].t - step / 2 : frames[s1].t;
+        events.flightS = events.landingT - events.toeOffT;
+        events.jumpHeightCm = (981 * events.flightS * events.flightS) / 8;
+
+        let apexI = s0;
+        for (let k = s0; k <= s1; k++) {
+          if (frames[k].pts && frames[k].pts.hip.y < frames[apexI].pts.hip.y) apexI = k;
+        }
+        events.apexT = frames[apexI].t;
+
+        let lowI = -1;
+        for (let k = 0; k < s0; k++) {
+          if (frames[k].pts && (lowI < 0 || frames[k].pts.hip.y > frames[lowI].pts.hip.y)) lowI = k;
+        }
+        if (lowI >= 0) events.lowestSquatT = frames[lowI].t;
+      }
+
+      return { step, frames, side, groundY, legLenPx, pxPerCm, airborne, facingDir, events,
+               medianHipX: pctl(ok.map(f => f.pts.hip.x), 0.5) };
+    }
+
+    function getTrackedKinematics(timeS) {
+      const tr = poseEngine.track;
+      if (!tr) return null;
+      const last = tr.frames.length - 1;
+      const fi = Math.max(0, Math.min(last, timeS / tr.step));
+      const i0 = Math.floor(fi);
+      const i1 = Math.min(last, i0 + 1);
+      const frac = fi - i0;
+
+      let a = tr.frames[i0].pts;
+      let b = tr.frames[i1].pts;
+      if (!a || !b) {
+        // Missing detection: hold the nearest valid pose.
+        let found = null;
+        for (let d = 0; d <= 30 && !found; d++) {
+          const lo = tr.frames[Math.max(0, Math.round(fi) - d)];
+          const hi = tr.frames[Math.min(last, Math.round(fi) + d)];
+          found = (lo && lo.pts) || (hi && hi.pts) || null;
+        }
+        if (!found) return null;
+        a = b = found;
+      }
+      const lerp = (nm) => ({ x: a[nm].x + (b[nm].x - a[nm].x) * frac, y: a[nm].y + (b[nm].y - a[nm].y) * frac });
+      const off = appState.jointManualOffsets;
+      const withOff = (p, o) => ({ x: Math.round(p.x + o.x), y: Math.round(p.y + o.y) });
+
+      const hip = withOff(lerp('hip'), off.hip);
+      const knee = withOff(lerp('knee'), off.knee);
+      const ankle = withOff(lerp('ankle'), off.ankle);
+      const toe = withOff(lerp('toe'), off.toe);
+      const sh = lerp('shoulder');
+      const ear = lerp('ear');
+      const shoulder = { x: Math.round(sh.x), y: Math.round(sh.y) };
+      const head = { x: Math.round(ear.x), y: Math.round(ear.y) };
+
+      const hipAngle = calcAngleDeg(shoulder, hip, knee);
+      const kneeAngle = calcAngleDeg(hip, knee, ankle);
+      const hl = lerp('heel');
+      const heel = { x: hl.x + off.ankle.x, y: hl.y + off.ankle.y };
+      const clinical = toClinicalAngles(hipAngle, kneeAngle, knee, ankle, toe, heel);
+
+      const airborne = !!tr.airborne[Math.round(fi)];
+      const clearanceCm = airborne ? Math.max(0, tr.groundY - toe.y) / tr.pxPerCm : 0;
+
+      const ev = tr.events;
+      const near = (t) => t != null && Math.abs(timeS - t) <= tr.step;
+      let phaseLabel;
+      if (near(ev.toeOffT)) phaseLabel = '★ 腳尖離地起跳瞬間 (Toe-Off)';
+      else if (near(ev.landingT)) phaseLabel = '★ 第一次落地腳尖觸地 (1st Toe-Touch)';
+      else if (airborne) {
+        phaseLabel = near(ev.apexT) ? '★ 騰空最高點 (Flight Apex)'
+          : (ev.apexT != null && timeS < ev.apexT ? '↑ 騰空上升期 (Flight Ascent)' : '↓ 騰空下降期 (Flight Descent)');
+      } else if (ev.toeOffT != null && timeS < ev.toeOffT) {
+        if (kneeAngle > 165) phaseLabel = '站立準備期 (Quiet Standing)';
+        else if (ev.lowestSquatT != null && timeS < ev.lowestSquatT) phaseLabel = '離心下蹲期 (Countermovement)';
+        else phaseLabel = '向心蹬伸起跳期 (Propulsion)';
+      } else if (ev.landingT != null && timeS >= ev.landingT) {
+        phaseLabel = kneeAngle < 165 ? '落地緩衝期 (Landing Absorption)' : '落地回穩 (Stabilized)';
+      } else {
+        phaseLabel = kneeAngle < 165 ? '屈膝 (Knee Flexion)' : '站立 (Standing)';
+      }
+
+      return {
+        frame: appState.currentFrame,
+        timeS: timeS.toFixed(3),
+        phaseLabel: `AI 姿勢追蹤：${phaseLabel}`,
+        onGround: !airborne,
+        toeClearanceCm: clearanceCm,
+        hip, knee, ankle, toe, shoulder, head,
+        ...clinical,
+        groundY: Math.round(tr.groundY)
+      };
+    }
+
+    function updateFacingButton() {
+      const btn = document.getElementById('btnFlipDirection');
+      btn.textContent = appState.facingDir === -1
+        ? '⇄ 外骨骼轉向: ◀ 面向左 (依影片定位)'
+        : '⇄ 外骨骼轉向: ▶ 面向右 (依影片定位)';
+    }
+
+    function describePoseTrack() {
+      const tr = poseEngine.track;
+      if (!tr) return '';
+      const ev = tr.events;
+      if (ev.flightS == null) return 'AI 姿勢模型 ✓ 已逐幀定位髖/膝/踝/腳尖（未偵測到騰空）';
+      return `AI 姿勢模型 ✓ 離地 ${ev.toeOffT.toFixed(3)}s → 落地 ${ev.landingT.toFixed(3)}s ｜ 滯空 ${(ev.flightS * 1000).toFixed(0)} ms ｜ 滯空法跳高 ${ev.jumpHeightCm.toFixed(1)} cm`;
     }
 
     function getSynchronizedKinematicsFrame() {
@@ -1369,13 +1684,21 @@
       const baseKin = computeFrameKinematics(frame, appState.mode, appState.sjCountermovementFault);
       const vw = aiPoseState.videoW || 800;
       const vh = aiPoseState.videoH || 450;
-      if (vw === 800 && vh === 450) {
+      const tr = (appState.usingUploadedVideo && poseEngine.track) ? poseEngine.track : null;
+      if (vw === 800 && vh === 450 && !tr) {
         baseKin.groundY = GROUND_Y;
         return baseKin;
       }
-      const sx = vw / 800;
-      const sy = vh / 450;
-      const scalePt = (pt) => ({ x: Math.round(pt.x * sx), y: Math.round(pt.y * sy) });
+      // Uniform scale only: separate X/Y factors would shear the skeleton and
+      // distort every joint angle on portrait or non-16:9 videos.
+      // When the pose track exists, size and place the template on the athlete.
+      const s = tr ? tr.legLenPx / 164 : Math.min(vw / 800, vh / 450);
+      const targetX = tr ? tr.medianHipX : vw / 2;
+      const targetGround = tr ? tr.groundY : GROUND_Y * s + (vh - 450 * s) / 2;
+      const scalePt = (pt) => ({
+        x: Math.round((pt.x - 400) * s + targetX),
+        y: Math.round((pt.y - GROUND_Y) * s + targetGround)
+      });
       return {
         ...baseKin,
         hip: scalePt(baseKin.hip),
@@ -1384,7 +1707,7 @@
         toe: scalePt(baseKin.toe),
         shoulder: scalePt(baseKin.shoulder),
         head: scalePt(baseKin.head),
-        groundY: Math.round(GROUND_Y * sy)
+        groundY: Math.round(targetGround)
       };
     }
 
@@ -1505,7 +1828,12 @@
       // 1. Run AI Computer Vision Pose & Motion Analysis on the active video frame
       let kin = null;
       if (hasLiveVideo && appState.autoMotionSync) {
-        kin = analyzeVideoFramePose();
+        if (appState.usingUploadedVideo && poseEngine.track) {
+          kin = getTrackedKinematics(sourceVideo.currentTime || 0);
+        } else if (!poseEngine.analyzing) {
+          // Legacy pixel/optical-flow estimate: live camera, or model unavailable offline.
+          kin = analyzeVideoFramePose();
+        }
       }
       if (!kin) {
         const syncedFrame = getSynchronizedKinematicsFrame();
@@ -1958,7 +2286,7 @@
               borderWidth: 2.5
             },
             {
-              label: '膝關節外骨骼夾角 (°)',
+              label: '膝關節屈曲角 (°，0°=伸直)',
               data: kneeAngleSeries,
               borderColor: '#22d3ee',
               borderDash: [4, 4],
@@ -1996,9 +2324,9 @@
             yAngle: {
               type: 'linear',
               position: 'right',
-              min: 70,
-              max: 190,
-              title: { display: true, text: '膝關節角度 (°)', color: '#22d3ee', font: { size: 10 } },
+              min: -10,
+              max: 120,
+              title: { display: true, text: '膝屈曲角 (°)', color: '#22d3ee', font: { size: 10 } },
               ticks: { color: '#22d3ee', font: { family: 'JetBrains Mono', size: 10 } },
               grid: { drawOnChartArea: false }
             }
@@ -2190,6 +2518,11 @@
       badge.textContent = 'STAGE 1: 正在掃描人體側面解剖輪廓...';
       badge.className = 'px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
 
+      if (appState.usingUploadedVideo && sourceVideo.duration && !isNaN(sourceVideo.duration)) {
+        runPoseAnalysisScan(autoChainStep2, badge);
+        return;
+      }
+
       showToast('啟動步驟 1：正在掃描人體側面解剖基準 (大轉子、外上髁、外踝)...');
 
       scanInterval = setInterval(() => {
@@ -2205,6 +2538,44 @@
           }
         }
       }, 30);
+    }
+
+    async function runPoseAnalysisScan(autoChainStep2, badge) {
+      const statusEl = document.getElementById('aiSyncStatusText');
+      let result = true;
+      if (!poseEngine.track || poseEngine.track.src !== sourceVideo.currentSrc) {
+        poseEngine.track = null;
+        poseEngine.analyzing = true;
+        badge.textContent = 'STAGE 1: 載入 AI 姿勢模型 (MediaPipe Pose)...';
+        showToast('啟動步驟 1：載入 AI 姿勢模型並逐幀辨識髖/膝/踝/腳尖...');
+        result = await analyzeImportedVideo((p) => {
+          appState.scanProgress = Math.round(p * 100);
+          badge.textContent = `STAGE 1: AI 逐幀姿勢辨識中... ${appState.scanProgress}%`;
+          renderCanvas();
+        });
+        poseEngine.analyzing = false;
+        if (result === 'cancelled') return;
+      }
+      appState.scanProgress = 100;
+
+      if (result && poseEngine.track) {
+        const tr = poseEngine.track;
+        appState.facingDir = tr.facingDir;
+        updateFacingButton();
+        if (tr.events.toeOffT != null && sourceVideo.duration) {
+          appState.videoToeOffRatio = tr.events.toeOffT / sourceVideo.duration;
+        }
+        if (statusEl) statusEl.textContent = describePoseTrack();
+        badge.textContent = 'STAGE 1 完成：AI 已逐幀定位側面關節，準備外骨骼對點';
+        showToast('AI 姿勢辨識完成！外骨骼將逐幀跟隨影片中的髖/膝/踝/腳尖');
+      } else {
+        if (statusEl) statusEl.textContent = 'AI 姿勢模型無法載入（需要網路），改用舊版光流估計';
+        badge.textContent = 'STAGE 1 完成 (舊版光流估計)';
+        showToast('AI 姿勢模型無法載入（需要網路連線），改用舊版光流估計');
+      }
+
+      if (autoChainStep2) setTimeout(() => runStep2AIAlignment(), 350);
+      else renderCanvas();
     }
 
     function runStep2AIAlignment() {
@@ -2262,6 +2633,7 @@
         aiPoseState.videoKneePoint = null;
         aiPoseState.clothingColors = { shirt: null, pants: null, shoes: null };
         aiPoseState.maxJumpHeightCm = 0;
+        poseEngine.track = null;
         appState.videoPoseTrail = [];
         appState.lastVideoTrailFrame = -1;
         syncCanvasToNativeVideoDimensions();
@@ -2334,6 +2706,8 @@
             sourceVideo.src = URL.createObjectURL(blob);
             sourceVideo.load();
             appState.usingUploadedVideo = true;
+            poseEngine.track = null;
+            sourceVideo.onloadeddata = () => runStep1AnatomicalScan(true);
           };
           mediaRecorder.start();
         }
@@ -2456,7 +2830,7 @@
       // Append section for current trial frame-by-frame exoskeleton kinematics
       rows.push([]);
       rows.push(['--- 逐幀外骨骼標記點軌跡 (Frame-by-Frame Exoskeleton Kinematics) ---']);
-      rows.push(['Frame', 'Time_s', 'Mode', 'Phase', 'On_Ground', 'Toe_Clearance_cm', 'Hip_X', 'Hip_Y', 'Hip_Angle_deg', 'Knee_X', 'Knee_Y', 'Knee_Angle_deg', 'Ankle_X', 'Ankle_Y', 'Ankle_Angle_deg', 'Toe_X', 'Toe_Y']);
+      rows.push(['Frame', 'Time_s', 'Mode', 'Phase', 'On_Ground', 'Toe_Clearance_cm', 'Hip_X', 'Hip_Y', 'Hip_Flexion_deg', 'Knee_X', 'Knee_Y', 'Knee_Flexion_deg', 'Ankle_X', 'Ankle_Y', 'Ankle_DorsiFlex_deg(+背屈/-蹠屈)', 'Toe_X', 'Toe_Y']);
 
       for (let f = 0; f <= TOTAL_FRAMES; f += 2) {
         const k = computeFrameKinematics(f, appState.mode, appState.sjCountermovementFault);
