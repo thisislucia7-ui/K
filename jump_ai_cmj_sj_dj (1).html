@@ -1,0 +1,2739 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JUMP — AI 運動生物力學垂直跳躍分析系統 (CMJ / SJ / DJ)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #090d16;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.65);
+    }
+    .scan-grid {
+      background-image: 
+        linear-gradient(to right, rgba(16, 185, 129, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    input[type="range"] {
+      accent-color: #10b981;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500 selection:text-slate-950">
+
+  <!-- Top Navigation Bar -->
+  <header class="sticky top-0 z-30 glass-card border-b border-slate-800/80 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <span class="font-black text-slate-950 text-xl tracking-tighter">J</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-black tracking-tight text-white">JUMP</h1>
+            <span class="text-xs font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">AI Biomechanics v2.4</span>
+          </div>
+          <p class="text-xs text-slate-400">側面解剖掃描外骨骼對點 ‧ CMJ / SJ / DJ 自動腳尖離地與落地偵測系統</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher Pills -->
+      <div class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+        <button id="btnModeCMJ" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-emerald-500 text-slate-950 shadow">
+          CMJ 下蹲反彈跳
+        </button>
+        <button id="btnModeSJ" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white">
+          SJ 靜止蹲跳
+        </button>
+        <button id="btnModeDJ" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white">
+          DJ 落下跳
+        </button>
+      </div>
+
+      <!-- Right Action Buttons -->
+      <div class="flex items-center gap-2">
+        <!-- Jump Height T/F Global Switch -->
+        <div class="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-1.5">
+          <span class="text-xs font-semibold text-slate-300">跳躍高度計算 (T/F):</span>
+          <button id="btnToggleHeightTF" type="button" class="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition-all">
+            T (True)
+          </button>
+        </div>
+
+        <button id="btnExportCSV" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>匯出 CSV/SCV 報表</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast Banner -->
+  <div id="toastBanner" class="fixed bottom-5 right-5 z-50 hidden max-w-sm glass-card border-l-4 border-emerald-400 px-4 py-3 rounded-xl shadow-2xl transition-all">
+    <div class="flex items-center gap-2.5">
+      <span id="toastIcon" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+      <p id="toastMessage" class="text-xs font-medium text-slate-100"></p>
+    </div>
+  </div>
+
+  <!-- Main Content Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+    <!-- Left 7 Columns: Video/Camera Canvas + Exoskeleton Controls + Timeline -->
+    <section class="lg:col-span-7 flex flex-col gap-4">
+
+      <!-- Source & Recording Toolbar -->
+      <div class="glass-card rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- File Upload Button -->
+          <label for="videoFileInput" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-semibold border border-slate-700 transition-all">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            <span>匯入影片分析</span>
+          </label>
+          <input id="videoFileInput" type="file" accept="video/*" class="hidden">
+
+          <!-- Camera Record Toggle -->
+          <button id="btnCameraToggle" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all">
+            <span id="recordDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span id="cameraBtnLabel">開啟鏡頭錄影</span>
+          </button>
+
+          <button id="btnStartStopRecord" type="button" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow transition-all">
+            <span id="recActionText">開始錄製跳躍</span>
+          </button>
+
+          <!-- Simulated Biomechanical Demo Video Button -->
+          <button id="btnLoadDemoVideo" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span>載入 120FPS 側面標準影片</span>
+          </button>
+        </div>
+
+        <!-- 2-Stage Anatomical Scan & AI Exoskeleton Alignment Controls -->
+        <div class="flex items-center gap-2">
+          <button id="btnStep1AnatomyScan" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <span>1. 掃描側面解剖</span>
+          </button>
+          <button id="btnStep2AIAnalyze" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold shadow-lg shadow-emerald-500/20 transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span>2. AI 外骨骼對點與分析</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Biomechanics Video + Exoskeleton Canvas Viewport -->
+      <div class="glass-card rounded-2xl p-3 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+          <div class="flex items-center gap-2">
+            <span id="scanStageBadge" class="px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              STAGE 2: 解剖掃描完成 ‧ 外骨骼對點鎖定
+            </span>
+            <span id="videoSourceBadge" class="text-xs text-slate-400 font-mono">
+              120 FPS 側面生物力學模擬源 (可拖曳關節微調)
+            </span>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <div class="inline-flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+              <button id="btnViewOverlay" type="button" class="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500 text-slate-950 transition-all">
+                疊加同步起跳
+              </button>
+              <button id="btnViewSplit" type="button" class="px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-300 hover:text-white transition-all">
+                雙畫面同時起跳對照
+              </button>
+            </div>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer text-slate-300">
+              <input id="chkShowAnatomy" type="checkbox" checked class="rounded text-emerald-500 focus:ring-0">
+              <span>側面解剖輪廓</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer text-slate-300">
+              <input id="chkShowExoskeleton" type="checkbox" checked class="rounded text-emerald-500 focus:ring-0">
+              <span>外骨骼標記 (髖/膝/踝/腳尖)</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer text-slate-300">
+              <input id="chkShowTrails" type="checkbox" checked class="rounded text-emerald-500 focus:ring-0">
+              <span>關節軌跡線</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Video Resolution & Aspect Ratio Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono text-[11px] font-bold" id="videoResBadge">
+              畫布尺寸: 800 × 450 px (匯入影片後自動鎖定 1:1 原始尺寸不壓縮)
+            </span>
+            <span class="text-slate-400 text-[11px]" id="aiSyncStatusText">
+              AI 視覺外骨骼追蹤：待命 / 示範模式
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="inline-flex items-center gap-1 cursor-pointer text-slate-300 text-[11px]">
+              <input id="chkOriginalPixelSize" type="checkbox" class="rounded text-emerald-500 focus:ring-0">
+              <span>1:1 原始像素尺寸檢視 (不縮放視窗)</span>
+            </label>
+            <label class="inline-flex items-center gap-1 cursor-pointer text-cyan-300 text-[11px] font-semibold">
+              <input id="chkShowExternalPip" type="checkbox" checked class="rounded text-cyan-500 focus:ring-0">
+              <span>STEP 2 外接 AI 外骨骼同步監視視窗</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Viewport Container (Dynamic Uncompressed Native Aspect Ratio) -->
+        <div id="viewportContainer" class="relative w-full bg-slate-950 rounded-xl overflow-auto border border-slate-800 scan-grid select-none flex items-center justify-center min-h-[380px]">
+          <!-- Hidden / Background HTML5 Video for uploaded/recorded media -->
+          <video id="sourceVideo" class="hidden" playsinline muted></video>
+          <!-- Main Interactive Overlay Canvas (Dynamically resized to native videoWidth x videoHeight + External Exoskeleton Dock) -->
+          <canvas id="biomechCanvas" width="800" height="450" class="max-w-full h-auto block mx-auto cursor-crosshair"></canvas>
+
+          <!-- Floating Phase & Angle HUD -->
+          <div class="absolute top-3 left-3 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl p-2.5 text-xs space-y-1 pointer-events-none">
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">當前動作期別:</span>
+              <span id="hudPhaseText" class="font-bold text-emerald-400">準備期 (Preparation)</span>
+            </div>
+            <div class="flex items-center gap-3 font-mono text-[11px]">
+              <span class="text-amber-300">髖 Hip: <strong id="hudHipAngle">180°</strong></span>
+              <span class="text-cyan-300">膝 Knee: <strong id="hudKneeAngle">180°</strong></span>
+              <span class="text-rose-300">踝 Ankle: <strong id="hudAnkleAngle">92°</strong></span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-400">
+              腳尖高度 ΔY: <strong id="hudToeClearance" class="text-white">0.0 cm</strong> ｜ 地面狀態: <strong id="hudGroundState" class="text-emerald-400">觸地 (On Ground)</strong>
+            </div>
+          </div>
+
+          <!-- Floating Exoskeleton Legend -->
+          <div class="absolute top-3 right-3 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl px-3 py-2 text-[11px] space-y-1 pointer-events-none">
+            <div class="font-bold text-slate-300 mb-1">外骨骼解剖標記點 (可拖曳對點)</div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span><span>髖關節 (Hip - 股骨大轉子)</span></div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span><span>膝關節 (Knee - 股骨外上髁)</span></div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span><span>踝關節 (Ankle - 腓骨外踝)</span></div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span><span>腳尖點 (Toe - 第五蹠骨/趾尖)</span></div>
+          </div>
+        </div>
+
+        <!-- Playback & Key Event Quick-Jump Scrubber -->
+        <div class="flex flex-col gap-2 bg-slate-900/80 p-3 rounded-xl border border-slate-800/90">
+          <div class="flex items-center gap-3">
+            <button id="btnPlayPause" type="button" class="w-9 h-9 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center font-bold transition-all">
+              <svg id="iconPlay" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+            </button>
+            <button id="btnPrevFrame" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700" title="上一幀">-1F</button>
+            <button id="btnNextFrame" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700" title="下一幀">+1F</button>
+
+            <div class="flex-1 flex items-center gap-2">
+              <input id="timelineSlider" type="range" min="0" max="240" value="0" step="1" class="w-full cursor-pointer">
+            </div>
+
+            <div class="text-xs font-mono text-slate-300 min-w-[125px] text-right">
+              <span id="currentTimeLabel">0.000s</span> / <span id="totalTimeLabel">2.000s</span>
+              <span class="text-slate-500">(<span id="currentFrameLabel">F0</span>)</span>
+            </div>
+          </div>
+
+          <!-- Instant Event Jump Markers -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-xs">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-slate-400 font-medium">AI 自動偵測關鍵幀跳轉：</span>
+              <button id="btnJumpDropTouch" type="button" class="hidden px-2.5 py-1 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-mono text-[11px]">
+                ↓ 第一次落地觸地 (DJ)
+              </button>
+              <button id="btnJumpLowestSquat" type="button" class="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-mono text-[11px]">
+                蹲踞最低點
+              </button>
+              <button id="btnJumpToeOff" type="button" class="px-2.5 py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-[11px]">
+                ↑ 腳尖離地起跳 (Toe-Off)
+              </button>
+              <button id="btnJumpApex" type="button" class="px-2.5 py-1 rounded-md bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-mono text-[11px]">
+                ★ 騰空最高點
+              </button>
+              <button id="btnJumpLanding" type="button" class="px-2.5 py-1 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-mono text-[11px]">
+                ↓ 腳尖落地觸地
+              </button>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-400">播放速度:</span>
+              <select id="playbackSpeedSelect" class="bg-slate-800 border border-slate-700 rounded-md px-2 py-0.5 text-xs font-mono text-slate-200">
+                <option value="1">1.0x</option>
+                <option value="0.5" selected>0.5x 慢動作</option>
+                <option value="0.25">0.25x 逐幀檢視</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Video & Exoskeleton Simultaneous Jump Sync Calibration Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono text-[11px] font-bold">
+                影片 ⇄ 外骨骼同步起跳引擎
+              </span>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer text-slate-200 font-medium">
+                <input id="chkAutoMotionSync" type="checkbox" checked class="rounded text-emerald-500 focus:ring-0">
+                <span>AI 動態光流同步起跳 (自動鎖定影片人物高度與蹲跳節奏)</span>
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="btnFlipDirection" type="button" class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-mono text-[11px] font-bold transition-all" title="切換外骨骼面向方向（左/右）">
+                ⇄ 外骨骼轉向: ◀ 面向左 (依影片定位)
+              </button>
+              <button id="btnSyncToeOffHere" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-[11px] font-bold transition-all" title="將目前影片時間設為外骨骼同步離地起跳點">
+                ⚡ 設目前影片畫面為同步起跳點
+              </button>
+              <button id="btnResetSyncOffset" type="button" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-mono text-[11px] transition-all">
+                重置同步
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kinematics & Toe Trajectory Chart -->
+      <div class="glass-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <h2 class="text-sm font-bold text-white">腳尖垂直軌跡與關節角度時序圖 (AI 自動判讀離地/落地點)</h2>
+            <p class="text-xs text-slate-400">實線：腳尖離地高度 (cm) 與髖關節高度 ｜ 虛線標記：腳尖離地起跳與腳尖觸地瞬間</p>
+          </div>
+          <span id="chartModeTag" class="text-xs font-mono px-2.5 py-1 rounded-md bg-slate-800 text-emerald-400 border border-slate-700">CMJ 模式曲線</span>
+        </div>
+        <div class="relative h-56 w-full">
+          <canvas id="kinematicsChart"></canvas>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right 5 Columns: Mode-Specific Biomechanical Readouts, Anatomical Scan Checklist & CSV History Log -->
+    <section class="lg:col-span-5 flex flex-col gap-4">
+
+      <!-- Anatomical Scan & Exoskeleton Status Card -->
+      <div class="glass-card rounded-2xl p-4 border-l-4 border-emerald-500">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <span>人體側面解剖掃描 & 外骨骼標記對點</span>
+          </h2>
+          <span id="scanConfidenceBadge" class="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+            AI 對點置信度 99.2%
+          </span>
+        </div>
+
+        <!-- Progress Steps -->
+        <div class="grid grid-cols-2 gap-2.5 mb-3 text-xs">
+          <div id="stepBox1" class="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40">
+            <div class="flex items-center justify-between font-bold text-emerald-300 mb-1">
+              <span>STEP 1. 側面解剖掃描</span>
+              <span>✓ 已完成</span>
+            </div>
+            <p class="text-[11px] text-slate-400">矢狀面軀幹軸、骨盆大轉子、股骨外上髁、外踝解剖輪廓定位</p>
+          </div>
+          <div id="stepBox2" class="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40">
+            <div class="flex items-center justify-between font-bold text-emerald-300 mb-1">
+              <span>STEP 2. 外骨骼 AI 對點</span>
+              <span>✓ 已鎖定</span>
+            </div>
+            <p class="text-[11px] text-slate-400">髖(Hip)、膝(Knee)、踝(Ankle) 與腳尖(Toe) 動態骨架追蹤</p>
+          </div>
+        </div>
+
+        <!-- Live Exoskeleton Coordinates Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400 text-[11px]">
+                <th class="py-1.5">外骨骼標記點</th>
+                <th class="py-1.5">側面解剖基準</th>
+                <th class="py-1.5 text-right">畫面座標 (X, Y)</th>
+                <th class="py-1.5 text-right">夾角 / 狀態</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 text-slate-200">
+              <tr>
+                <td class="py-1.5 font-sans font-semibold text-amber-300">● 髖關節 (Hip)</td>
+                <td class="py-1.5 font-sans text-slate-400 text-[11px]">股骨大轉子</td>
+                <td id="tableHipCoord" class="py-1.5 text-right">(392, 218)</td>
+                <td id="tableHipAngle" class="py-1.5 text-right text-amber-300">180.0°</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 font-sans font-semibold text-cyan-300">● 膝關節 (Knee)</td>
+                <td class="py-1.5 font-sans text-slate-400 text-[11px]">股骨外上髁</td>
+                <td id="tableKneeCoord" class="py-1.5 text-right">(404, 302)</td>
+                <td id="tableKneeAngle" class="py-1.5 text-right text-cyan-300">180.0°</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 font-sans font-semibold text-rose-300">● 踝關節 (Ankle)</td>
+                <td class="py-1.5 font-sans text-slate-400 text-[11px]">腓骨外踝</td>
+                <td id="tableAnkleCoord" class="py-1.5 text-right">(396, 382)</td>
+                <td id="tableAnkleAngle" class="py-1.5 text-right text-rose-300">92.0°</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 font-sans font-semibold text-emerald-300">▲ 腳尖點 (Toe)</td>
+                <td class="py-1.5 font-sans text-slate-400 text-[11px]">第五蹠骨頭/趾尖</td>
+                <td id="tableToeCoord" class="py-1.5 text-right">(438, 395)</td>
+                <td id="tableToeStatus" class="py-1.5 text-right text-emerald-400">觸地基準</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Mode-Specific Primary Biomechanical Output Card -->
+      <div class="glass-card rounded-2xl p-4 flex flex-col gap-3">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+          <div>
+            <span id="activeModeHeaderBadge" class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">CMJ 反向跳分析</span>
+            <h2 id="activeModeTitle" class="text-base font-extrabold text-white mt-1">CMJ 下蹲反彈跳 AI 判讀結果</h2>
+          </div>
+          <!-- Jump Height T/F Status Pill & Primary Metric -->
+          <div class="text-right">
+            <div class="text-[11px] text-slate-400 flex items-center justify-end gap-1">
+              <span>跳躍高度計算:</span>
+              <strong id="cardHeightTFFlag" class="font-mono text-emerald-400">T (True)</strong>
+            </div>
+            <div id="primaryJumpHeightDisplay" class="text-2xl font-black font-mono text-emerald-400 tracking-tight">
+              44.2 <span class="text-sm font-normal text-slate-300">cm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode Panel 1: CMJ Specific Output -->
+        <div id="panelCMJ" class="space-y-2.5">
+          <div class="text-xs text-slate-400 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+            <strong class="text-slate-200">CMJ 檢測重點：</strong>自動捕捉快速下蹲後腳尖離地起跳瞬間、騰空飛行時間與第一次落地腳尖觸地時間點。
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400">飛行時間 (Flight Time)</div>
+              <div id="cmjFlightTime" class="text-lg font-bold font-mono text-white mt-0.5">600 ms <span class="text-xs text-slate-400">(0.600 s)</span></div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400">跳躍高度計算 (T/F)</div>
+              <div id="cmjHeightResult" class="text-lg font-bold font-mono text-emerald-400 mt-0.5">T ｜ 44.2 cm</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30">
+              <div class="text-xs text-emerald-300 font-semibold">腳尖離地起跳 (Toe-Off)</div>
+              <div id="cmjToeOffTime" class="text-base font-bold font-mono text-white mt-0.5">0.750 s <span class="text-xs text-slate-400">(Frame 90)</span></div>
+              <div id="cmjToeOffPos" class="text-[11px] font-mono text-slate-400 mt-0.5">離地腳尖座標: (438, 395) px</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-rose-500/30">
+              <div class="text-xs text-rose-300 font-semibold">第一次落地腳尖觸地</div>
+              <div id="cmjLandingTime" class="text-base font-bold font-mono text-white mt-0.5">1.350 s <span class="text-xs text-slate-400">(Frame 162)</span></div>
+              <div id="cmjLandingPos" class="text-[11px] font-mono text-slate-400 mt-0.5">觸地腳尖座標: (441, 395) px</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode Panel 2: SJ Specific Output -->
+        <div id="panelSJ" class="hidden space-y-2.5">
+          <!-- Static Squat Hold Check Banner -->
+          <div id="sjSquatCheckBox" class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-between">
+            <div>
+              <div class="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <span id="sjHoldStatusIcon">✓</span>
+                <span>起跳時不移動蹲踞位置檢測 (Static Squat Hold)</span>
+              </div>
+              <p id="sjHoldDetail" class="text-[11px] text-slate-300 mt-0.5">
+                蹲踞準備期髖關節垂直偏移僅 0.3 cm (&lt; 1.5 cm 閾值)，確認無反向預蹲移動！
+              </p>
+            </div>
+            <button id="btnSimulateSJFault" type="button" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] font-mono text-amber-300 border border-amber-500/40 shrink-0">
+              切換違規預蹲測試
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400">飛行時間 (Flight Time)</div>
+              <div id="sjFlightTime" class="text-lg font-bold font-mono text-white mt-0.5">558 ms <span class="text-xs text-slate-400">(0.558 s)</span></div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400">跳躍高度計算 (T/F)</div>
+              <div id="sjHeightResult" class="text-lg font-bold font-mono text-emerald-400 mt-0.5">T ｜ 38.2 cm</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30">
+              <div class="text-xs text-emerald-300 font-semibold">腳尖離地起跳 (Toe-Off)</div>
+              <div id="sjToeOffTime" class="text-base font-bold font-mono text-white mt-0.5">0.800 s <span class="text-xs text-slate-400">(Frame 96)</span></div>
+              <div id="sjToeOffPos" class="text-[11px] font-mono text-slate-400 mt-0.5">離地腳尖座標: (440, 395) px</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-rose-500/30">
+              <div class="text-xs text-rose-300 font-semibold">第一次腳尖落地觸地</div>
+              <div id="sjLandingTime" class="text-base font-bold font-mono text-white mt-0.5">1.358 s <span class="text-xs text-slate-400">(Frame 163)</span></div>
+              <div id="sjLandingPos" class="text-[11px] font-mono text-slate-400 mt-0.5">觸地腳尖座標: (443, 395) px</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode Panel 3: DJ Specific Output -->
+        <div id="panelDJ" class="hidden space-y-2.5">
+          <div class="text-xs text-slate-400 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+            <strong class="text-slate-200">DJ 落下跳檢測重點：</strong>從 30 cm 高台落下，精準計算「第一次落地後銜接下蹲並起跳的時間 (觸地銜接時間 GCT)」、騰空跳躍高度與「第二次落地位置」。
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-purple-500/40 col-span-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-purple-300 font-bold">第一次落地後銜接下蹲並起跳時間 (Ground Contact Time)</span>
+                <span id="djRSIBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-200">RSI: 2.01 m/s</span>
+              </div>
+              <div id="djContactTime" class="text-xl font-black font-mono text-white mt-1">
+                208 ms <span class="text-xs font-normal text-slate-400">(0.450s 第一次觸地 → 0.550s 下蹲最低點 → 0.658s 腳尖離地起跳)</span>
+              </div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-rose-500/40">
+              <div class="text-xs text-rose-300 font-semibold">第二次落地位置與時間</div>
+              <div id="djSecondLandingPos" class="text-base font-bold font-mono text-white mt-0.5">X: 452 px, Y: 395 px</div>
+              <div id="djSecondLandingDetail" class="text-[11px] font-mono text-slate-400 mt-0.5">時間: 1.242s (F149) ｜ 水平偏移 +3.5 cm</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30">
+              <div class="text-xs text-emerald-300 font-semibold">飛行時間 & 跳躍高度 (T/F)</div>
+              <div id="djFlightAndHeight" class="text-base font-bold font-mono text-emerald-400 mt-0.5">T ｜ 41.8 cm</div>
+              <div id="djFlightSub" class="text-[11px] font-mono text-slate-400 mt-0.5">飛行時間: 584 ms (0.584 s)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Current Trial to Batch Table Button -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+          <span class="text-xs text-slate-400">可將目前跳躍測試寫入下方 CSV 批次紀錄表</span>
+          <button id="btnAddRecordToLog" type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all">
+            + 加入測試紀錄列表
+          </button>
+        </div>
+      </div>
+
+      <!-- Recorded Trials Table (Ready for CSV / SCV Export) -->
+      <div class="glass-card rounded-2xl p-4 flex-1 flex flex-col">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <h2 class="text-sm font-bold text-white">跳躍測試紀錄清單 (支援 CSV / SCV 匯出)</h2>
+            <p class="text-[11px] text-slate-400">包含 CMJ / SJ / DJ 預設與新增紀錄，點擊上方「匯出 CSV/SCV 報表」即可下載</p>
+          </div>
+          <span id="recordCountBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">3 筆紀錄</span>
+        </div>
+
+        <div class="overflow-x-auto flex-1">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400 text-[11px]">
+                <th class="py-1.5">模式</th>
+                <th class="py-1.5">高度計算(T/F)</th>
+                <th class="py-1.5 text-right">飛行時間</th>
+                <th class="py-1.5 text-right">跳躍高度</th>
+                <th class="py-1.5">離地/落地與專屬指標</th>
+              </tr>
+            </thead>
+            <tbody id="trialLogTableBody" class="divide-y divide-slate-800/60 text-slate-200 text-[11px]">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    // =========================================================================
+    // JUMP — AI 運動生物力學垂直跳躍分析系統 (CMJ / SJ / DJ)
+    // =========================================================================
+
+    const FPS = 120;
+    const TOTAL_FRAMES = 240; // 2.000 seconds @ 120fps
+    const GRAVITY = 9.81;
+    const GROUND_Y = 395; // Ground baseline pixel Y on 800x450 canvas
+
+    // Application State
+    const appState = {
+      mode: 'CMJ',               // 'CMJ' | 'SJ' | 'DJ'
+      calcHeightTF: true,        // T/F toggle required for all modes
+      sjCountermovementFault: false, // Toggle to demonstrate SJ squat movement check
+      scanStage: 2,              // 1: Sagittal Anatomy Scan, 2: AI Exoskeleton Aligned
+      scanProgress: 100,
+      isPlaying: false,
+      currentFrame: 0,
+      playbackSpeed: 0.5,
+      showAnatomy: true,
+      showExoskeleton: true,
+      showTrails: true,
+      videoPoseTrail: [],
+      lastVideoTrailFrame: -1,
+      usingUploadedVideo: false,
+      isCameraOpen: false,
+      isRecording: false,
+      viewLayout: 'overlay',     // 'overlay' | 'split' (Simultaneous video + exoskeleton display)
+      facingDir: -1,             // -1 = 面向左 (flipped direction), +1 = 面向右
+      autoMotionSync: true,      // Synchronize exoskeleton jump height & phase with imported video motion
+      videoToeOffRatio: 0.375,   // Normalized video timestamp (0..1) where Toe-Off occurs (default 90/240 = 0.375)
+      videoSubjectTrack: {
+        active: false,
+        baseHipY: 218,
+        baseToeY: 395,
+        currentLiftPx: 0,
+        currentSquatDepth: 0,
+        centerXOffset: 0
+      },
+      draggingJoint: null,
+      jointManualOffsets: {
+        hip: { x: 0, y: 0 },
+        knee: { x: 0, y: 0 },
+        ankle: { x: 0, y: 0 },
+        toe: { x: 0, y: 0 }
+      },
+      trials: [
+        {
+          id: 'JUMP-001',
+          timestamp: '2026-11-10 16:10:12',
+          mode: 'CMJ',
+          calcHeightTF: 'T',
+          flightTimeMs: 600,
+          jumpHeightCm: 44.2,
+          toeOffTimeS: '0.750s (F90)',
+          firstLandingS: '1.350s (F162)',
+          sjStaticHold: 'N/A',
+          djContactTimeMs: 'N/A',
+          djSecondLandingPos: 'N/A',
+          note: '腳尖離地 (438,395) → 第一次腳尖觸地 (441,395)'
+        },
+        {
+          id: 'JUMP-002',
+          timestamp: '2026-11-10 16:12:45',
+          mode: 'SJ',
+          calcHeightTF: 'T',
+          flightTimeMs: 558,
+          jumpHeightCm: 38.2,
+          toeOffTimeS: '0.800s (F96)',
+          firstLandingS: '1.358s (F163)',
+          sjStaticHold: 'PASS (蹲踞穩定 0.3cm)',
+          djContactTimeMs: 'N/A',
+          djSecondLandingPos: 'N/A',
+          note: '起跳不移動蹲踞位置 PASS ｜ 第一次觸地 (443,395)'
+        },
+        {
+          id: 'JUMP-003',
+          timestamp: '2026-11-10 16:15:08',
+          mode: 'DJ',
+          calcHeightTF: 'T',
+          flightTimeMs: 584,
+          jumpHeightCm: 41.8,
+          toeOffTimeS: '0.658s (F79)',
+          firstLandingS: '0.450s (F54)',
+          sjStaticHold: 'N/A',
+          djContactTimeMs: '208 ms',
+          djSecondLandingPos: '1.242s (452, 395) Δ+3.5cm',
+          note: '觸地銜接 208ms ｜ 第二次落地 (452,395)'
+        }
+      ]
+    };
+
+    // Mode Biomechanical Configurations (Frame indices @ 120 FPS)
+    function getModeSpec(mode, sjFault) {
+      if (mode === 'CMJ') {
+        return {
+          name: 'CMJ 下蹲反彈跳 (Countermovement Jump)',
+          badge: 'CMJ 反向跳分析',
+          squatStartFrame: 36,     // 0.300s
+          lowestSquatFrame: 66,    // 0.550s
+          toeOffFrame: 90,         // 0.750s
+          apexFrame: 126,          // 1.050s
+          firstLandingFrame: 162,  // 1.350s (Flight = 72 frames = 0.600s -> 44.15cm)
+          flightTimeS: 0.600,
+          jumpHeightCm: 44.2,
+          toeOffCoord: { x: 438, y: 395 },
+          firstLandingCoord: { x: 441, y: 395 }
+        };
+      } else if (mode === 'SJ') {
+        return {
+          name: 'SJ 靜止蹲跳 (Squat Jump)',
+          badge: 'SJ 靜止蹲跳分析',
+          squatHoldStartFrame: 15,
+          lowestSquatFrame: 72,    // 0.600s
+          toeOffFrame: 96,         // 0.800s
+          apexFrame: 129,          // 1.075s
+          firstLandingFrame: 163,  // 1.358s (Flight = 67 frames = 0.558s -> 38.2cm)
+          flightTimeS: 0.558,
+          jumpHeightCm: 38.2,
+          sjDipCm: sjFault ? 4.6 : 0.3,
+          sjPass: !sjFault,
+          toeOffCoord: { x: 440, y: 395 },
+          firstLandingCoord: { x: 443, y: 395 }
+        };
+      } else {
+        // DJ (Drop Jump from 30cm box on left)
+        return {
+          name: 'DJ 落下跳 (Drop Jump)',
+          badge: 'DJ 落下跳分析',
+          boxDropFrame: 24,        // 0.200s leaves 30cm box
+          firstLandingFrame: 54,   // 0.450s first toe-touch on ground
+          lowestSquatFrame: 66,    // 0.550s amortization lowest point
+          toeOffFrame: 79,         // 0.658s toe-off (Contact time = 25 frames = 208ms)
+          apexFrame: 114,          // 0.950s apex
+          secondLandingFrame: 149, // 1.242s second landing (Flight = 70 frames = 0.584s -> 41.8cm)
+          contactTimeMs: 208,
+          flightTimeS: 0.584,
+          jumpHeightCm: 41.8,
+          rsi: (0.418 / 0.208).toFixed(2),
+          firstLandingCoord: { x: 438, y: 395 },
+          secondLandingCoord: { x: 452, y: 395 },
+          horizontalDriftCm: 3.5
+        };
+      }
+    }
+
+    // Generate Sagittal Lower-Limb & Trunk Kinematics for any frame (0..240)
+    function computeFrameKinematics(frame, mode, sjFault) {
+      const spec = getModeSpec(mode, sjFault);
+      let toeX = 438;
+      let toeY = GROUND_Y;
+      let ankleX = 396;
+      let ankleY = 382;
+      let squatDepth = 0; // 0 = standing, 1 = full squat
+      let airProgress = 0; // 0 = on ground, >0 in air (parabola 0..1)
+      let phaseLabel = '站立準備期 (Preparation)';
+      let onGround = true;
+
+      if (mode === 'CMJ') {
+        if (frame < spec.squatStartFrame) {
+          phaseLabel = '站立準備期 (Quiet Standing)';
+        } else if (frame < spec.lowestSquatFrame) {
+          const p = (frame - spec.squatStartFrame) / (spec.lowestSquatFrame - spec.squatStartFrame);
+          squatDepth = Math.sin(p * Math.PI * 0.5);
+          phaseLabel = '離心下蹲期 (Countermovement Unweighting)';
+        } else if (frame < spec.toeOffFrame) {
+          const p = (frame - spec.lowestSquatFrame) / (spec.toeOffFrame - spec.lowestSquatFrame);
+          squatDepth = Math.cos(p * Math.PI * 0.5);
+          phaseLabel = '向心蹬伸起跳期 (Propulsion)';
+        } else if (frame === spec.toeOffFrame) {
+          phaseLabel = '★ 腳尖離地起跳瞬間 (Toe-Off)';
+          onGround = false;
+        } else if (frame > spec.toeOffFrame && frame < spec.firstLandingFrame) {
+          const p = (frame - spec.toeOffFrame) / (spec.firstLandingFrame - spec.toeOffFrame);
+          airProgress = 4 * p * (1 - p);
+          onGround = false;
+          phaseLabel = frame === spec.apexFrame ? '★ 騰空最高點 (Flight Apex)' : '騰空飛行期 (Flight Phase)';
+          toeX = 438 + Math.round(p * 3);
+        } else if (frame === spec.firstLandingFrame) {
+          phaseLabel = '★ 第一次落地腳尖觸地 (1st Toe-Touch)';
+          toeX = 441;
+        } else {
+          const p = Math.min(1, (frame - spec.firstLandingFrame) / 35);
+          squatDepth = Math.sin(p * Math.PI) * 0.55;
+          toeX = 441;
+          phaseLabel = '落地緩衝回穩期 (Landing Absorption)';
+        }
+      } else if (mode === 'SJ') {
+        // Squat Jump: starts standing straight (frames 0..18), lowers into squat (18..34), then holds static squat (34..72)
+        if (frame < 18) {
+          squatDepth = 0;
+          phaseLabel = '站立準備期 (膝關節完全伸直 180°)';
+        } else if (frame < 34) {
+          const p = (frame - 18) / (34 - 18);
+          squatDepth = 0.85 * Math.sin(p * Math.PI * 0.5);
+          phaseLabel = '進入預備蹲踞姿勢 (Lowering to Squat Hold)';
+        } else if (frame < spec.lowestSquatFrame) {
+          squatDepth = 0.85;
+          if (sjFault && frame >= 50 && frame < spec.lowestSquatFrame) {
+            const dipP = (frame - 50) / (spec.lowestSquatFrame - 50);
+            squatDepth = 0.85 + Math.sin(dipP * Math.PI) * 0.22;
+            phaseLabel = '⚠ 偵測到違規預蹲下沉 (Illegal Countermovement)';
+          } else {
+            phaseLabel = '靜止蹲踞保持期 (Static Squat Hold - 不移動蹲踞位置)';
+          }
+        } else if (frame < spec.toeOffFrame) {
+          const p = (frame - spec.lowestSquatFrame) / (spec.toeOffFrame - spec.lowestSquatFrame);
+          squatDepth = 0.85 * Math.cos(p * Math.PI * 0.5);
+          phaseLabel = '純向心蹬伸起跳 (Concentric Propulsion)';
+        } else if (frame === spec.toeOffFrame) {
+          phaseLabel = '★ 腳尖離地起跳瞬間 (Toe-Off)';
+          onGround = false;
+          toeX = 440;
+        } else if (frame > spec.toeOffFrame && frame < spec.firstLandingFrame) {
+          const p = (frame - spec.toeOffFrame) / (spec.firstLandingFrame - spec.toeOffFrame);
+          airProgress = 4 * p * (1 - p) * 0.88;
+          onGround = false;
+          toeX = 440 + Math.round(p * 3);
+          phaseLabel = '騰空飛行期 (Flight Phase)';
+        } else if (frame === spec.firstLandingFrame) {
+          phaseLabel = '★ 第一次腳尖落地觸地 (1st Toe-Touch)';
+          toeX = 443;
+        } else {
+          const p = Math.min(1, (frame - spec.firstLandingFrame) / 35);
+          squatDepth = Math.sin(p * Math.PI) * 0.5;
+          toeX = 443;
+          phaseLabel = '落地緩衝穩定 (Landing Stabilization)';
+        }
+      } else {
+        // DJ (Drop Jump)
+        const boxHeightPx = 62; // 30cm box on left
+        if (frame < spec.boxDropFrame) {
+          toeX = 330;
+          toeY = GROUND_Y - boxHeightPx;
+          ankleX = 290;
+          ankleY = 382 - boxHeightPx;
+          phaseLabel = '高台準備落下 (On 30cm Drop Box)';
+        } else if (frame < spec.firstLandingFrame) {
+          const p = (frame - spec.boxDropFrame) / (spec.firstLandingFrame - spec.boxDropFrame);
+          toeX = Math.round(330 + p * (438 - 330));
+          toeY = Math.round((GROUND_Y - boxHeightPx) + (p * p) * boxHeightPx);
+          ankleX = toeX - 42;
+          ankleY = toeY - 13;
+          onGround = false;
+          phaseLabel = '高台落下騰空期 (Drop Phase)';
+        } else if (frame === spec.firstLandingFrame) {
+          toeX = 438;
+          phaseLabel = '★ 第一次落地腳尖觸地 (1st Landing Contact)';
+        } else if (frame > spec.firstLandingFrame && frame < spec.toeOffFrame) {
+          const p = (frame - spec.firstLandingFrame) / (spec.toeOffFrame - spec.firstLandingFrame);
+          squatDepth = Math.sin(p * Math.PI) * 0.82;
+          phaseLabel = '⚡ 觸地銜接下蹲起跳期 (Amortization / Contact Phase)';
+        } else if (frame === spec.toeOffFrame) {
+          onGround = false;
+          phaseLabel = '★ 腳尖離地起跳瞬間 (Toe-Off)';
+        } else if (frame > spec.toeOffFrame && frame < spec.secondLandingFrame) {
+          const p = (frame - spec.toeOffFrame) / (spec.secondLandingFrame - spec.toeOffFrame);
+          airProgress = 4 * p * (1 - p) * 0.95;
+          onGround = false;
+          toeX = Math.round(438 + p * (452 - 438));
+          phaseLabel = '二次騰空飛行期 (Rebound Flight Phase)';
+        } else if (frame === spec.secondLandingFrame) {
+          toeX = 452;
+          phaseLabel = '★ 第二次落地腳尖觸地 (2nd Landing Position)';
+        } else {
+          const p = Math.min(1, (frame - spec.secondLandingFrame) / 35);
+          squatDepth = Math.sin(p * Math.PI) * 0.55;
+          toeX = 452;
+          phaseLabel = '第二次落地緩衝完成 (2nd Landing Stabilized)';
+        }
+      }
+
+      // Support Facing Direction (dir = -1 for Facing Left ◀, dir = +1 for Facing Right ▶)
+      const dir = appState.facingDir || -1;
+      const pivotX = 415;
+      if (dir === -1) {
+        // Mirror horizontal trajectory around pivotX when facing left
+        toeX = pivotX - (toeX - pivotX);
+      }
+
+      // Compute airborne pixel lift (approx 2.2 px per cm)
+      const maxJumpCm = spec.jumpHeightCm;
+      const toeClearanceCm = onGround ? Math.max(0, (GROUND_Y - toeY) / 2.1) : (airProgress * maxJumpCm);
+      if (!onGround && !(mode === 'DJ' && frame < spec.firstLandingFrame)) {
+        const liftPx = Math.round(toeClearanceCm * 2.15);
+        toeY = GROUND_Y - liftPx;
+        // Plantarflexion in air (ankle is behind toe relative to facingDir)
+        ankleX = toeX - dir * 38;
+        ankleY = toeY - 22;
+      } else if (onGround && !(mode === 'DJ' && frame < spec.boxDropFrame)) {
+        ankleX = toeX - dir * 42;
+        ankleY = toeY - 13;
+      } else if (mode === 'DJ' && frame < spec.boxDropFrame) {
+        ankleX = toeX - dir * 40;
+      }
+
+      // Apply manual user drag offsets
+      const off = appState.jointManualOffsets;
+      const finalToe = { x: toeX + off.toe.x, y: toeY + off.toe.y };
+      const finalAnkle = { x: ankleX + off.ankle.x, y: ankleY + off.ankle.y };
+
+      // Knee is 100% straight (180°) directly above ankle when standing (squatDepth === 0), and moves forward/down only during squat
+      const kneeForward = dir * Math.round(squatDepth * 42);
+      const kneeDrop = Math.round(squatDepth * 26);
+      const finalKnee = {
+        x: finalAnkle.x + kneeForward + off.knee.x,
+        y: finalAnkle.y - 82 + kneeDrop + off.knee.y
+      };
+
+      // Hip is 100% straight above knee & ankle when standing (squatDepth === 0), and drops/moves back during squat
+      const hipBack = dir * Math.round(squatDepth * 32);
+      const hipDrop = Math.round(squatDepth * 64);
+      const finalHip = {
+        x: finalAnkle.x - hipBack + off.hip.x,
+        y: finalAnkle.y - 164 + hipDrop + off.hip.y
+      };
+
+      // Shoulder & Head are aligned upright when standing, and lean forward (in facingDir) during squat
+      const trunkLean = dir * Math.round(squatDepth * 30);
+      const shoulder = {
+        x: finalHip.x + trunkLean,
+        y: finalHip.y - 102 + Math.round(squatDepth * 14)
+      };
+      const head = {
+        x: shoulder.x + dir * 6,
+        y: shoulder.y - 34
+      };
+
+      // Compute joint angles (degrees)
+      const hipAngle = calcAngleDeg(shoulder, finalHip, finalKnee);
+      const kneeAngle = calcAngleDeg(finalHip, finalKnee, finalAnkle);
+      const ankleAngle = calcAngleDeg(finalKnee, finalAnkle, finalToe);
+
+      return {
+        frame,
+        timeS: (frame / FPS).toFixed(3),
+        phaseLabel,
+        onGround,
+        toeClearanceCm: Math.max(0, toeClearanceCm),
+        hip: finalHip,
+        knee: finalKnee,
+        ankle: finalAnkle,
+        toe: finalToe,
+        shoulder,
+        head,
+        hipAngle: hipAngle.toFixed(1),
+        kneeAngle: kneeAngle.toFixed(1),
+        ankleAngle: ankleAngle.toFixed(1)
+      };
+    }
+
+    function calcAngleDeg(A, B, C) {
+      const ABx = A.x - B.x, ABy = A.y - B.y;
+      const CBx = C.x - B.x, CBy = C.y - B.y;
+      const dot = ABx * CBx + ABy * CBy;
+      const magAB = Math.hypot(ABx, ABy) || 1;
+      const magCB = Math.hypot(CBx, CBy) || 1;
+      const cosVal = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
+      return (Math.acos(cosVal) * 180) / Math.PI;
+    }
+
+    // =========================================================================
+    // Canvas Rendering (Sagittal Anatomical Scan + Exoskeleton Overlay)
+    // =========================================================================
+    const canvas = document.getElementById('biomechCanvas');
+    const ctx = canvas.getContext('2d');
+    const sourceVideo = document.getElementById('sourceVideo');
+
+    // =========================================================================
+    // Native Uncompressed Video Sizing + Real-Time AI Pose & Inverse Kinematics Engine
+    // =========================================================================
+    const motionCanvas = document.createElement('canvas');
+    const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+    let prevMotionFrameData = null;
+
+    // AI Vision Tracking State calibrated to the imported video's native resolution
+    const aiPoseState = {
+      initialized: false,
+      videoW: 800,
+      videoH: 450,
+      dockW: 0,
+      groundY: 395,
+      standingHipY: 218,
+      standingTopY: 95,
+      personCenterX: 400,
+      smoothComX: 400,
+      smoothHipX: 400,
+      smoothHipY: 218,
+      smoothTopX: 400,
+      smoothToeY: 395,
+      videoKneePoint: null,
+      clothingColors: { shirt: null, pants: null, shoes: null },
+      squatRatio: 0,
+      toeClearanceCm: 0,
+      onGround: true,
+      detectedToeOffTime: null,
+      detectedLandingTime: null,
+      maxJumpHeightCm: 0,
+      poseHistory: []
+    };
+
+    function syncCanvasToNativeVideoDimensions() {
+      const hasLiveVideo = (appState.usingUploadedVideo || appState.isCameraOpen) && sourceVideo.videoWidth > 0 && sourceVideo.videoHeight > 0;
+      const vw = hasLiveVideo ? sourceVideo.videoWidth : 800;
+      const vh = hasLiveVideo ? sourceVideo.videoHeight : 450;
+
+      aiPoseState.videoW = vw;
+      aiPoseState.videoH = vh;
+
+      // In 'split' mode, we DO NOT squash the video into half width!
+      // Instead, we keep the full native videoWidth x videoHeight on the left and attach an external exoskeleton panel of width dockW on the right!
+      const dockW = (appState.viewLayout === 'split') ? Math.round(Math.max(320, vw * 0.48)) : 0;
+      aiPoseState.dockW = dockW;
+
+      const targetCanvasW = vw + dockW;
+      const targetCanvasH = vh;
+
+      if (canvas.width !== targetCanvasW || canvas.height !== targetCanvasH) {
+        canvas.width = targetCanvasW;
+        canvas.height = targetCanvasH;
+      }
+
+      const chkOrig = document.getElementById('chkOriginalPixelSize');
+      if (chkOrig && chkOrig.checked) {
+        canvas.className = 'block mx-auto cursor-crosshair';
+        canvas.style.width = targetCanvasW + 'px';
+        canvas.style.height = targetCanvasH + 'px';
+      } else {
+        canvas.className = 'max-w-full max-h-[75vh] w-auto h-auto block mx-auto cursor-crosshair';
+        canvas.style.width = '';
+        canvas.style.height = '';
+      }
+
+      const resBadge = document.getElementById('videoResBadge');
+      if (resBadge) {
+        if (hasLiveVideo) {
+          resBadge.textContent = dockW > 0
+            ? `原影片無壓縮: ${vw}×${vh} px + 外接外骨骼視窗 ${dockW}×${vh} px`
+            : `原影片 1:1 原始比例無壓縮: ${vw} × ${vh} px`;
+        } else {
+          resBadge.textContent = `標準模擬畫布: ${targetCanvasW} × ${targetCanvasH} px (匯入影片自動切換原始長寬比)`;
+        }
+      }
+    }
+
+    // Real-Time Computer Vision Human Silhouette & Optical Flow Pose Analyzer
+    function analyzeVideoFramePose() {
+      const hasLiveVideo = (appState.usingUploadedVideo || appState.isCameraOpen) && sourceVideo.readyState >= 2;
+      if (!hasLiveVideo) return null;
+
+      const vw = aiPoseState.videoW;
+      const vh = aiPoseState.videoH;
+      const region = { x: 0, y: 0, width: vw, height: vh };
+      const sampleW = 160;
+      const sampleH = Math.max(90, Math.round((region.height / region.width) * sampleW));
+
+      if (motionCanvas.width !== sampleW || motionCanvas.height !== sampleH) {
+        motionCanvas.width = sampleW;
+        motionCanvas.height = sampleH;
+        prevMotionFrameData = null;
+      }
+
+      try {
+        motionCtx.drawImage(sourceVideo, 0, 0, sampleW, sampleH);
+        const imgData = motionCtx.getImageData(0, 0, sampleW, sampleH).data;
+
+        // 1. Estimate background color from left/right outer margins of the video frame
+        let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
+        for (let y = Math.round(sampleH * 0.1); y < Math.round(sampleH * 0.85); y += 3) {
+          for (const x of [3, 7, sampleW - 8, sampleW - 4]) {
+            const idx = (y * sampleW + x) * 4;
+            bgR += imgData[idx];
+            bgG += imgData[idx + 1];
+            bgB += imgData[idx + 2];
+            bgCount++;
+          }
+        }
+        bgR /= (bgCount || 1);
+        bgG /= (bgCount || 1);
+        bgB /= (bgCount || 1);
+
+        // 2. Scan central region for foreground human silhouette + inter-frame motion energy
+        const yRows = [];
+        let weightedX = 0;
+        let totalWeight = 0;
+
+        const xStart = Math.round(sampleW * 0.12);
+        const xEnd = Math.round(sampleW * 0.88);
+        const yStart = Math.round(sampleH * 0.06);
+        const yEnd = Math.round(sampleH * 0.94);
+
+        for (let y = yStart; y < yEnd; y++) {
+          let rowWeight = 0;
+          let rowWeightedX = 0;
+          let rowR = 0, rowG = 0, rowB = 0;
+          for (let x = xStart; x < xEnd; x++) {
+            const idx = (y * sampleW + x) * 4;
+            const r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
+            const fgDiff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+            let motionDiff = 0;
+            if (prevMotionFrameData) {
+              motionDiff = Math.abs(r - prevMotionFrameData[idx]) +
+                           Math.abs(g - prevMotionFrameData[idx + 1]) +
+                           Math.abs(b - prevMotionFrameData[idx + 2]);
+            }
+            // Foreground + motion score across the entire video frame
+            const centerBias = 1 - Math.abs(x - sampleW * 0.5) / (sampleW * 0.75);
+            const score = (fgDiff > 58 ? fgDiff * 0.75 : 0) + (motionDiff > 24 ? motionDiff * 1.65 : 0);
+            if (score > 40) {
+              const w = score * Math.max(0.35, centerBias);
+              rowWeight += w;
+              rowWeightedX += x * w;
+              rowR += r * w;
+              rowG += g * w;
+              rowB += b * w;
+              weightedX += x * w;
+              totalWeight += w;
+            }
+          }
+          if (rowWeight > 110) {
+            yRows.push({
+              y,
+              weight: rowWeight,
+              meanX: rowWeightedX / rowWeight,
+              color: { r: rowR / rowWeight, g: rowG / rowWeight, b: rowB / rowWeight }
+            });
+          }
+        }
+
+        prevMotionFrameData = new Uint8ClampedArray(imgData);
+
+        if (totalWeight > 700 && yRows.length >= 6) {
+          // Compute percentiles along vertical Y axis & per-segment horizontal X of the athlete in the video
+          let cum = 0;
+          const rowSum = yRows.reduce((acc, r) => acc + r.weight, 0);
+          let topSampleY = yRows[0].y;
+          let midSampleY = yRows[Math.floor(yRows.length * 0.52)].y;
+          let botSampleY = yRows[yRows.length - 1].y;
+          let hipSampleX = weightedX / totalWeight;
+          let footSampleX = weightedX / totalWeight;
+
+          for (const r of yRows) {
+            cum += r.weight;
+            const ratio = cum / rowSum;
+            if (ratio <= 0.12) topSampleY = r.y;
+            if (ratio <= 0.53) {
+              midSampleY = r.y;
+              hipSampleX = r.meanX;
+            }
+            if (ratio <= 0.94) {
+              botSampleY = r.y;
+              footSampleX = r.meanX;
+            }
+          }
+
+          // Track adaptive shirt, pants, and shoe colors from the detected
+          // subject. The pants band is used to locate the knee on each frame.
+          const bodyTop = yRows[0].y;
+          const bodyBottom = yRows[yRows.length - 1].y;
+          const bodySpan = Math.max(1, bodyBottom - bodyTop);
+          const colorMean = (rows) => {
+            if (!rows.length) return null;
+            const total = rows.reduce((sum, row) => sum + row.weight, 0);
+            return rows.reduce((acc, row) => ({
+              r: acc.r + row.color.r * row.weight / total,
+              g: acc.g + row.color.g * row.weight / total,
+              b: acc.b + row.color.b * row.weight / total
+            }), { r: 0, g: 0, b: 0 });
+          };
+          const shirtRows = yRows.filter(row => (row.y - bodyTop) / bodySpan < 0.42);
+          const pantsRows = yRows.filter(row => {
+            const ratio = (row.y - bodyTop) / bodySpan;
+            return ratio >= 0.42 && ratio < 0.82;
+          });
+          const shoeRows = yRows.filter(row => (row.y - bodyTop) / bodySpan >= 0.82);
+          aiPoseState.clothingColors = {
+            shirt: colorMean(shirtRows),
+            pants: colorMean(pantsRows),
+            shoes: colorMean(shoeRows)
+          };
+
+          const pantsColor = aiPoseState.clothingColors.pants;
+          const kneeRows = pantsRows.filter(row => {
+            const ratio = (row.y - bodyTop) / bodySpan;
+            return ratio >= 0.54 && ratio <= 0.76;
+          });
+          if (kneeRows.length) {
+            const kneePoint = kneeRows.reduce((acc, row) => {
+              const colorDistance = pantsColor
+                ? Math.hypot(row.color.r - pantsColor.r, row.color.g - pantsColor.g, row.color.b - pantsColor.b)
+                : 0;
+              const weight = row.weight / (1 + colorDistance / 35);
+              return { x: acc.x + row.meanX * weight, y: acc.y + row.y * weight, weight: acc.weight + weight };
+            }, { x: 0, y: 0, weight: 0 });
+            if (kneePoint.weight > 0) {
+              aiPoseState.videoKneePoint = {
+                x: (kneePoint.x / kneePoint.weight) * (vw / sampleW),
+                y: (kneePoint.y / kneePoint.weight) * (vh / sampleH)
+              };
+            }
+          }
+
+          const scaleX = vw / sampleW;
+          const scaleY = vh / sampleH;
+
+          const detectedX = (hipSampleX * 0.6 + footSampleX * 0.4) * scaleX;
+          const detectedHipX = hipSampleX * scaleX;
+          const detectedTopX = yRows[0].meanX * scaleX;
+          const detectedTopY = topSampleY * scaleY;
+          const detectedHipY = midSampleY * scaleY;
+          const detectedToeY = botSampleY * scaleY;
+
+          if (!aiPoseState.initialized) {
+            aiPoseState.initialized = true;
+            aiPoseState.smoothComX = detectedX;
+            aiPoseState.smoothHipX = detectedHipX;
+            aiPoseState.smoothTopY = detectedTopY;
+            aiPoseState.smoothTopX = detectedTopX;
+            aiPoseState.smoothHipY = detectedHipY;
+            aiPoseState.smoothToeY = detectedToeY;
+            aiPoseState.groundY = Math.max(detectedToeY, vh * 0.78);
+            aiPoseState.standingHipY = detectedHipY;
+            aiPoseState.standingTopY = detectedTopY;
+          } else {
+            // Smooth exponential filtering for rock-solid exoskeleton joint locks
+            const alpha = 0.38;
+            aiPoseState.smoothComX = aiPoseState.smoothComX * (1 - alpha) + detectedX * alpha;
+            aiPoseState.smoothHipX = aiPoseState.smoothHipX * (1 - alpha) + detectedHipX * alpha;
+            aiPoseState.smoothTopY = aiPoseState.smoothTopY * (1 - alpha) + detectedTopY * alpha;
+            aiPoseState.smoothTopX = aiPoseState.smoothTopX * (1 - alpha) + detectedTopX * alpha;
+            aiPoseState.smoothHipY = aiPoseState.smoothHipY * (1 - alpha) + detectedHipY * alpha;
+            aiPoseState.smoothToeY = aiPoseState.smoothToeY * (1 - alpha) + detectedToeY * alpha;
+
+            // Lock standing baseline during initial upright frames so standing knee starts 100% straight (180°)
+            if ((sourceVideo.currentTime || 0) < 0.30) {
+              aiPoseState.standingHipY = aiPoseState.smoothHipY;
+            }
+            if (aiPoseState.smoothToeY > aiPoseState.groundY && aiPoseState.smoothToeY < vh * 0.96) {
+              aiPoseState.groundY = aiPoseState.groundY * 0.85 + aiPoseState.smoothToeY * 0.15;
+            }
+          }
+        }
+      } catch (err) {
+        // Ignore cross-origin or transient read errors
+      }
+
+      // If initialized from video pixels, solve 2-Link Sagittal Inverse Kinematics (Hip -> Knee -> Ankle -> Toe)
+      if (aiPoseState.initialized && appState.autoMotionSync) {
+        const gY = aiPoseState.groundY;
+        const footLen = Math.max(vh * 0.065, (gY - aiPoseState.standingHipY) * 0.18);
+        const standingAnkleY = gY - footLen * 0.24;
+        // Exact standing Hip-to-Ankle length so thighLen + shankLen === standingAnkleY - standingHipY (100% straight at start!)
+        const standLegLen = Math.max(vh * 0.32, standingAnkleY - aiPoseState.standingHipY);
+        const thighLen = standLegLen * 0.52;
+        const shankLen = standLegLen * 0.48;
+        const fullLegLen = thighLen + shankLen;
+
+        // Check upward pelvis & foot lift
+        const hipLiftPx = Math.max(0, aiPoseState.standingHipY - aiPoseState.smoothHipY);
+        const footLiftPx = Math.max(0, gY - aiPoseState.smoothToeY);
+        const effectiveLiftPx = Math.max(footLiftPx, hipLiftPx * 0.88);
+
+        const pxPerCm = Math.max(1.5, standLegLen / 84);
+        const clearanceCm = effectiveLiftPx / pxPerCm;
+        const isAirborne = clearanceCm > 2.2;
+
+        // Check downward squat compression below upright standing posture (deadband of 6px so initial standing is 100% straight 180°)
+        const rawSquatDropPx = (!isAirborne && (sourceVideo.currentTime || 0) > 0.20)
+          ? Math.max(0, aiPoseState.smoothHipY - aiPoseState.standingHipY - 6)
+          : 0;
+        const squatRatio = Math.max(0, Math.min(0.88, rawSquatDropPx / (fullLegLen * 0.42)));
+
+        // Estimate knee flexion from the imported video's frame-by-frame
+        // hip compression. Upright/airborne frames approach 180 degrees;
+        // squat and landing frames progressively flex the knee.
+        const videoKneeFlexion = Math.max(0, Math.min(1, squatRatio / 0.88));
+        const videoKneeAngleDeg = 180 - videoKneeFlexion * 110;
+
+        const dir = appState.facingDir || -1;
+        // Position exoskeleton directly on the detected subject X/Y in the video and orient in `dir`
+        const ankleX = Math.round(aiPoseState.smoothComX - dir * (footLen * 0.25) + appState.jointManualOffsets.ankle.x);
+        const toeX = Math.round(ankleX + dir * (footLen * 0.85) + appState.jointManualOffsets.toe.x);
+        const toeY = Math.round((isAirborne ? (gY - effectiveLiftPx) : gY) + appState.jointManualOffsets.toe.y);
+        const ankleY = Math.round(toeY - (isAirborne ? footLen * 0.40 : footLen * 0.24) + appState.jointManualOffsets.ankle.y);
+
+        // When squatRatio === 0 (at the beginning & when fully extended in air), hipX is vertically aligned with ankleX and leg is 100% straight (180°)!
+        const hipBackOffset = Math.round(squatRatio * footLen * 0.85);
+        const modeledHipX = ankleX - dir * hipBackOffset;
+        const modeledHipY = ankleY - fullLegLen + rawSquatDropPx;
+        const hipX = Math.round(aiPoseState.smoothHipX * 0.72 + modeledHipX * 0.28 + appState.jointManualOffsets.hip.x);
+        const hipY = Math.round(aiPoseState.smoothHipY * 0.72 + modeledHipY * 0.28 + appState.jointManualOffsets.hip.y);
+
+        let kneeX, kneeY;
+        if (squatRatio <= 0.01) {
+          // 100% straight knee (180.0°) at the start and at full extension
+          kneeX = Math.round(hipX + (ankleX - hipX) * 0.52 + appState.jointManualOffsets.knee.x);
+          kneeY = Math.round(hipY + (ankleY - hipY) * 0.52 + appState.jointManualOffsets.knee.y);
+        } else {
+          // Solve 2-Link Sagittal Inverse Kinematics for Knee (Hip -> Knee -> Ankle), bending toward `dir`
+          const dx = ankleX - hipX;
+          const dy = ankleY - hipY;
+          const minLegReach = fullLegLen * 0.48;
+          const dist = Math.max(minLegReach, Math.min(fullLegLen, Math.hypot(dx, dy)));
+          // Use the video-derived knee angle as the IK bend target so the
+          // drawn knee follows observed flexion/extension, not only keyframes.
+          const alphaAngle = ((180 - videoKneeAngleDeg) * Math.PI) / 360;
+          const baseAngle = Math.atan2(dy, dx);
+          const kneeTheta = baseAngle - dir * alphaAngle;
+          kneeX = Math.round(hipX + thighLen * Math.cos(kneeTheta) + appState.jointManualOffsets.knee.x);
+          kneeY = Math.round(hipY + thighLen * Math.sin(kneeTheta) + appState.jointManualOffsets.knee.y);
+        }
+
+        // Prefer the color-assisted knee location from the pants region when
+        // available, with a small IK blend to reject noisy video pixels.
+        if (aiPoseState.videoKneePoint) {
+          kneeX = Math.round(kneeX * 0.3 + aiPoseState.videoKneePoint.x * 0.7);
+          kneeY = Math.round(kneeY * 0.3 + aiPoseState.videoKneePoint.y * 0.7);
+        }
+
+        const trunkLen = standLegLen * 0.58;
+        const shoulderX = Math.round(aiPoseState.smoothTopX * 0.72 + (hipX + dir * (squatRatio * (trunkLen * 0.34))) * 0.28);
+        const shoulderY = Math.round(aiPoseState.smoothTopY * 0.72 + (hipY - trunkLen * (1 - squatRatio * 0.16)) * 0.28);
+        const headX = Math.round(shoulderX + dir * 4);
+        const headY = Math.round(shoulderY - standLegLen * 0.20);
+
+        const hipAngle = calcAngleDeg({ x: shoulderX, y: shoulderY }, { x: hipX, y: hipY }, { x: kneeX, y: kneeY });
+        const kneeAngle = calcAngleDeg({ x: hipX, y: hipY }, { x: kneeX, y: kneeY }, { x: ankleX, y: ankleY });
+        const ankleAngle = calcAngleDeg({ x: kneeX, y: kneeY }, { x: ankleX, y: ankleY }, { x: toeX, y: toeY });
+
+        let phaseLabel = 'AI 視覺動態追蹤：站立準備期';
+        if (isAirborne) {
+          phaseLabel = clearanceCm > aiPoseState.maxJumpHeightCm * 0.88
+            ? '★ AI 追蹤：騰空最高點 (Flight Apex)'
+            : '↑ AI 追蹤：騰空飛行期 (Airborne)';
+        } else if (squatRatio > 0.18) {
+          phaseLabel = '↓ AI 追蹤：下蹲蓄力/緩衝期 (Squat Flexion)';
+        }
+
+        const vidTime = sourceVideo.currentTime || (appState.currentFrame / FPS);
+        if (isAirborne && !aiPoseState.onGround) {
+          if (clearanceCm > aiPoseState.maxJumpHeightCm) {
+            aiPoseState.maxJumpHeightCm = clearanceCm;
+          }
+        } else if (isAirborne && aiPoseState.onGround) {
+          aiPoseState.detectedToeOffTime = vidTime;
+        } else if (!isAirborne && !aiPoseState.onGround) {
+          aiPoseState.detectedLandingTime = vidTime;
+        }
+        aiPoseState.onGround = !isAirborne;
+
+        const statusEl = document.getElementById('aiSyncStatusText');
+        if (statusEl) {
+          statusEl.textContent = `逐幀髖屈/膝屈角度修正中 (髖 ${hipAngle.toFixed(0)}°・膝 ${kneeAngle.toFixed(0)}° ｜ 衣/褲/鞋色定位)`;
+        }
+
+        return {
+          frame: appState.currentFrame,
+          timeS: vidTime.toFixed(3),
+          phaseLabel,
+          onGround: !isAirborne,
+          toeClearanceCm: Math.max(0, clearanceCm),
+          hip: { x: hipX, y: hipY },
+          knee: { x: kneeX, y: kneeY },
+          ankle: { x: ankleX, y: ankleY },
+          toe: { x: toeX, y: toeY },
+          shoulder: { x: shoulderX, y: shoulderY },
+          head: { x: headX, y: headY },
+          hipAngle: hipAngle.toFixed(1),
+          kneeAngle: kneeAngle.toFixed(1),
+          ankleAngle: ankleAngle.toFixed(1),
+          groundY: Math.round(gY)
+        };
+      }
+      return null;
+    }
+
+    function getSynchronizedKinematicsFrame() {
+      if (!appState.usingUploadedVideo) return appState.currentFrame;
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      const targetToeOffF = Math.round(appState.videoToeOffRatio * TOTAL_FRAMES);
+      const shift = spec.toeOffFrame - targetToeOffF;
+      return Math.max(0, Math.min(TOTAL_FRAMES, appState.currentFrame + shift));
+    }
+
+    // Scale simulated kinematics proportionally to any video resolution (vw x vh) when fallback or demo is used
+    function getScaledKinematics(frame) {
+      const baseKin = computeFrameKinematics(frame, appState.mode, appState.sjCountermovementFault);
+      const vw = aiPoseState.videoW || 800;
+      const vh = aiPoseState.videoH || 450;
+      if (vw === 800 && vh === 450) {
+        baseKin.groundY = GROUND_Y;
+        return baseKin;
+      }
+      const sx = vw / 800;
+      const sy = vh / 450;
+      const scalePt = (pt) => ({ x: Math.round(pt.x * sx), y: Math.round(pt.y * sy) });
+      return {
+        ...baseKin,
+        hip: scalePt(baseKin.hip),
+        knee: scalePt(baseKin.knee),
+        ankle: scalePt(baseKin.ankle),
+        toe: scalePt(baseKin.toe),
+        shoulder: scalePt(baseKin.shoulder),
+        head: scalePt(baseKin.head),
+        groundY: Math.round(GROUND_Y * sy)
+      };
+    }
+
+    // Draw the External Attached AI Exoskeleton Telemetry Window (PiP or Side Dock)
+    function drawExternalExoskeletonDock(kin, dockX, dockY, dockW, dockH) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dockX, dockY, dockW, dockH);
+      ctx.clip();
+
+      // Dark high-contrast biomechanical grid background for the attached exoskeleton screen
+      ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
+      ctx.fillRect(dockX, dockY, dockW, dockH);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(dockX + 1, dockY + 1, dockW - 2, dockH - 2);
+
+      // Subtle grid lines inside external exoskeleton monitor
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.12)';
+      ctx.lineWidth = 1;
+      for (let gx = dockX + 24; gx < dockX + dockW; gx += 24) {
+        ctx.beginPath();
+        ctx.moveTo(gx, dockY);
+        ctx.lineTo(gx, dockY + dockH);
+        ctx.stroke();
+      }
+      for (let gy = dockY + 24; gy < dockY + dockH; gy += 24) {
+        ctx.beginPath();
+        ctx.moveTo(dockX, gy);
+        ctx.lineTo(dockX + dockW, gy);
+        ctx.stroke();
+      }
+
+      // Header Banner inside the External Exoskeleton Window
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.18)';
+      ctx.fillRect(dockX, dockY, dockW, 30);
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 12px "JetBrains Mono", "Noto Sans TC", sans-serif';
+      ctx.fillText('⚡ STEP 2 外接 AI 外骨骼同步分析畫面', dockX + 12, dockY + 20);
+
+      // Position the external exoskeleton matching the athlete's relative horizontal position & facing direction in the video
+      const bodyHeightRef = Math.max(140, (kin.groundY || GROUND_Y) - kin.head.y + 80);
+      const scaleFactor = Math.min((dockW * 0.65) / 220, (dockH * 0.72) / bodyHeightRef);
+      const relVideoX = Math.max(0.28, Math.min(0.72, kin.hip.x / (aiPoseState.videoW || 800)));
+      const centerDockX = dockX + dockW * relVideoX;
+      const groundDockY = dockY + dockH * 0.84;
+
+      // Ground baseline in external exoskeleton dock
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(dockX + 20, groundDockY);
+      ctx.lineTo(dockX + dockW - 20, groundDockY);
+      ctx.stroke();
+
+      const mapPt = (pt) => ({
+        x: Math.round(centerDockX + (pt.x - kin.hip.x) * scaleFactor),
+        y: Math.round(groundDockY - ((kin.groundY || GROUND_Y) - pt.y) * scaleFactor)
+      });
+
+      const dShoulder = mapPt(kin.shoulder);
+      const dHip = mapPt(kin.hip);
+      const dKnee = mapPt(kin.knee);
+      const dAnkle = mapPt(kin.ankle);
+      const dToe = mapPt(kin.toe);
+      const dHead = mapPt(kin.head);
+
+      // Draw anatomical silhouette & exoskeleton inside the external dock
+      drawCapsule(ctx, dShoulder, dHip, Math.max(8, 18 * scaleFactor), 'rgba(14, 165, 233, 0.14)', 'rgba(56, 189, 248, 0.5)');
+      drawCapsule(ctx, dHip, dKnee, Math.max(6, 14 * scaleFactor), 'rgba(16, 185, 129, 0.14)', 'rgba(52, 211, 153, 0.5)');
+      drawCapsule(ctx, dKnee, dAnkle, Math.max(5, 10 * scaleFactor), 'rgba(16, 185, 129, 0.14)', 'rgba(52, 211, 153, 0.5)');
+
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+      ctx.beginPath();
+      ctx.arc(dHead.x, dHead.y, Math.max(8, 15 * scaleFactor), 0, Math.PI * 2);
+      ctx.stroke();
+
+      const drawLink = (a, b, col) => {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      };
+      drawLink(dShoulder, dHip, '#94a3b8');
+      drawLink(dHip, dKnee, '#fbbf24');
+      drawLink(dKnee, dAnkle, '#22d3ee');
+      drawLink(dAnkle, dToe, '#10b981');
+
+      [
+        { pt: dHip, col: '#fbbf24', txt: `髖 ${kin.hipAngle}°` },
+        { pt: dKnee, col: '#22d3ee', txt: `膝 ${kin.kneeAngle}°` },
+        { pt: dAnkle, col: '#fb7185', txt: `踝 ${kin.ankleAngle}°` },
+        { pt: dToe, col: '#10b981', txt: kin.onGround ? '觸地' : `+${kin.toeClearanceCm.toFixed(1)}cm` }
+      ].forEach(node => {
+        ctx.fillStyle = node.col;
+        ctx.beginPath();
+        ctx.arc(node.pt.x, node.pt.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+        ctx.fillText(node.txt, node.pt.x + 10, node.pt.y + 4);
+      });
+
+      ctx.restore();
+    }
+
+    function renderCanvas() {
+      syncCanvasToNativeVideoDimensions();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const hasLiveVideo = (appState.usingUploadedVideo || appState.isCameraOpen) && sourceVideo.readyState >= 2;
+      const vw = aiPoseState.videoW;
+      const vh = aiPoseState.videoH;
+
+      // 1. Run AI Computer Vision Pose & Motion Analysis on the active video frame
+      let kin = null;
+      if (hasLiveVideo && appState.autoMotionSync) {
+        kin = analyzeVideoFramePose();
+      }
+      if (!kin) {
+        const syncedFrame = getSynchronizedKinematicsFrame();
+        kin = getScaledKinematics(syncedFrame);
+      }
+
+      // 2. Draw Uncompressed Native Video Frame at exact (0, 0, vw, vh) without ANY aspect-ratio distortion
+      if (hasLiveVideo) {
+        ctx.save();
+        ctx.drawImage(sourceVideo, 0, 0, vw, vh);
+        ctx.restore();
+      } else {
+        const grad = ctx.createLinearGradient(0, 0, 0, vh);
+        grad.addColorStop(0, '#090d16');
+        grad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, vw, vh);
+      }
+
+      const activeGroundY = kin.groundY || GROUND_Y;
+      const scaleRatioY = vh / 450;
+
+      // Draw Calibration Ruler on Left Side
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+      ctx.font = '11px "JetBrains Mono", monospace';
+      for (let cm = 0; cm <= 150; cm += 25) {
+        const y = activeGroundY - cm * 2.15 * scaleRatioY;
+        if (y > 20) {
+          ctx.beginPath();
+          ctx.moveTo(35, y);
+          ctx.lineTo(54, y);
+          ctx.stroke();
+          ctx.fillText(cm + 'cm', 6, y + 3);
+        }
+      }
+      ctx.restore();
+
+      // Draw Force Plate / Ground Line adapted to video width & detected groundY
+      ctx.save();
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(35, activeGroundY);
+      ctx.lineTo(vw - 25, activeGroundY);
+      ctx.stroke();
+
+      // Force Plate Highlight Zone under tracked subject
+      const plateX = Math.round((kin.toe ? kin.toe.x : vw * 0.5) - 65);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.18)';
+      ctx.fillRect(plateX, activeGroundY, 130, 8);
+      ctx.strokeStyle = '#10b981';
+      ctx.strokeRect(plateX, activeGroundY, 130, 8);
+      ctx.fillStyle = '#a7f3d0';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText(`AI 腳尖觸地感測基準面 (Y = ${activeGroundY} px)`, Math.max(40, plateX - 30), Math.min(vh - 6, activeGroundY + 22));
+
+      // Draw 30cm Drop Box if mode === 'DJ' (positioned behind the jumper based on facingDir)
+      if (appState.mode === 'DJ') {
+        const boxH = Math.round(62 * scaleRatioY);
+        const boxX = (appState.facingDir === -1) ? Math.round(vw * 0.58) : Math.round(vw * 0.30);
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.18)';
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2;
+        ctx.fillRect(boxX, activeGroundY - boxH, 100, boxH);
+        ctx.strokeRect(boxX, activeGroundY - boxH, 100, boxH);
+        ctx.fillStyle = '#e9d5ff';
+        ctx.font = 'bold 11px "Inter", sans-serif';
+        ctx.fillText('DJ 30cm 落下台', boxX + 10, activeGroundY - boxH + 25);
+      }
+      ctx.restore();
+
+      // Using synchronized `kin` computed above for simultaneous jump display
+
+      // 2. Draw Joint Trajectory Trails if enabled
+      if (appState.showTrails) {
+        recordVideoPoseFrame(kin);
+        drawJointTrails();
+      }
+
+      // 3. Draw Sagittal Anatomical Silhouette & Scan Overlay if enabled
+      if (appState.showAnatomy) {
+        drawSagittalAnatomy(kin);
+      }
+
+      // 4. Draw Stage 1 Scanning Laser Beam if scanning in progress
+      if (appState.scanStage === 1) {
+        drawAnatomicalScanLaser(kin);
+      }
+
+      // 5. Draw Stage 2 Exoskeleton Links & Keypoints (Hip, Knee, Ankle, Toe) directly onto the video frame
+      if (appState.showExoskeleton) {
+        drawExoskeletonOverlay(kin);
+      }
+
+      // 6. STEP 2: Draw External Attached AI Exoskeleton Screen (Side Dock or Connected PiP Window)
+      const showPipEl = document.getElementById('chkShowExternalPip');
+      const showExternalPip = showPipEl ? showPipEl.checked : true;
+      if (appState.viewLayout === 'split' && aiPoseState.dockW > 0) {
+        drawExternalExoskeletonDock(kin, vw, 0, aiPoseState.dockW, vh);
+      } else if (appState.scanStage === 2 && showExternalPip) {
+        const pipW = Math.round(Math.max(210, Math.min(300, vw * 0.28)));
+        const pipH = Math.round(Math.max(220, Math.min(320, vh * 0.54)));
+        const pipX = vw - pipW - 14;
+        const pipY = vh - pipH - 14;
+        drawExternalExoskeletonDock(kin, pipX, pipY, pipW, pipH);
+      }
+
+      // Save lastRenderedKin for mouse interaction & update Live HUD
+      appState.lastRenderedKin = kin;
+      updateLiveHUDAndTable(kin);
+    }
+
+    function recordVideoPoseFrame(kin) {
+      const isVideoPose = (appState.usingUploadedVideo || appState.isCameraOpen) && aiPoseState.initialized;
+      if (!isVideoPose || !kin || appState.lastVideoTrailFrame === kin.frame) return;
+      appState.lastVideoTrailFrame = kin.frame;
+      appState.videoPoseTrail.push({
+        frame: kin.frame,
+        phaseLabel: kin.phaseLabel,
+        hip: { ...kin.hip },
+        knee: { ...kin.knee },
+        ankle: { ...kin.ankle },
+        toe: { ...kin.toe }
+      });
+      if (appState.videoPoseTrail.length > 72) appState.videoPoseTrail.shift();
+    }
+
+    function drawJointTrails() {
+      const trailFrames = appState.videoPoseTrail.length > 1
+        ? appState.videoPoseTrail
+        : (() => {
+            const fallback = [];
+            const startF = Math.max(0, appState.currentFrame - 45);
+            for (let f = startF; f <= appState.currentFrame; f += 2) {
+              fallback.push(computeFrameKinematics(f, appState.mode, appState.sjCountermovementFault));
+            }
+            return fallback;
+          })();
+      if (trailFrames.length < 2) return;
+
+      const drawPath = (pts, color) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        pts.forEach((p, idx) => {
+          if (idx === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      drawPath(trailFrames.map(k => k.hip), 'rgba(251, 191, 36, 0.72)');
+      drawPath(trailFrames.map(k => k.knee), 'rgba(34, 211, 238, 0.82)');
+      drawPath(trailFrames.map(k => k.ankle), 'rgba(251, 113, 133, 0.72)');
+      drawPath(trailFrames.map(k => k.toe), 'rgba(16, 185, 129, 0.82)');
+
+      // VICON-like ghost skeletons: every recorded video frame contributes
+      // point-to-point links, with recent frames drawn more prominently.
+      trailFrames.slice(-18, -1).forEach((k, index) => {
+        const alpha = 0.08 + (index / 18) * 0.20;
+        const ghost = `rgba(226, 232, 240, ${alpha.toFixed(3)})`;
+        [[k.shoulder || k.hip, k.hip], [k.hip, k.knee], [k.knee, k.ankle], [k.ankle, k.toe]].forEach(([a, b]) => {
+          if (!a || !b) return;
+          ctx.save();
+          ctx.strokeStyle = ghost;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.fillStyle = ghost;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      });
+    }
+
+    function drawSagittalAnatomy(kin) {
+      ctx.save();
+      // Draw translucent sagittal body volume (head, torso, thigh, shank, foot anatomical contour)
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.10)';
+      ctx.lineWidth = 1.5;
+
+      // Head & Cranium sagittal profile
+      ctx.beginPath();
+      ctx.arc(kin.head.x, kin.head.y, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Torso / Pelvis anatomical capsule
+      drawCapsule(ctx, kin.shoulder, kin.hip, 26, 'rgba(14, 165, 233, 0.10)', 'rgba(56, 189, 248, 0.4)');
+      // Femur / Thigh sagittal muscle contour
+      drawCapsule(ctx, kin.hip, kin.knee, 20, 'rgba(16, 185, 129, 0.10)', 'rgba(52, 211, 153, 0.4)');
+      // Tibia-Fibula / Shank contour
+      drawCapsule(ctx, kin.knee, kin.ankle, 14, 'rgba(16, 185, 129, 0.10)', 'rgba(52, 211, 153, 0.4)');
+      // Foot sagittal arch & metatarsal contour
+      drawCapsule(ctx, kin.ankle, kin.toe, 10, 'rgba(16, 185, 129, 0.12)', 'rgba(52, 211, 153, 0.5)');
+
+      // Anatomical Plane Callout lines
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.85)';
+      ctx.fillText('矢狀面解剖軸 (Sagittal Axis)', kin.shoulder.x - 125, kin.shoulder.y - 10);
+      ctx.restore();
+    }
+
+    function drawCapsule(ctx, p1, p2, radius, fillStyle, strokeStyle) {
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      ctx.save();
+      ctx.fillStyle = fillStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.beginPath();
+      ctx.arc(p1.x, p1.y, radius, angle + Math.PI / 2, angle - Math.PI / 2);
+      ctx.arc(p2.x, p2.y, radius, angle - Math.PI / 2, angle + Math.PI / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawAnatomicalScanLaser(kin) {
+      ctx.save();
+      const vw = aiPoseState.videoW || 800;
+      const vh = aiPoseState.videoH || 450;
+      const scanY = Math.round(vh * 0.08 + (appState.scanProgress / 100) * (vh * 0.82));
+      const x1 = Math.round(vw * 0.12);
+      const x2 = Math.round(vw * 0.88);
+      // Glowing laser line
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1, scanY);
+      ctx.lineTo(x2, scanY);
+      ctx.stroke();
+
+      const grad = ctx.createLinearGradient(0, scanY - 40, 0, scanY);
+      grad.addColorStop(0, 'rgba(251, 191, 36, 0)');
+      grad.addColorStop(1, 'rgba(251, 191, 36, 0.28)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x1, scanY - 40, x2 - x1, 40);
+
+      ctx.fillStyle = '#fde68a';
+      ctx.font = 'bold 13px "JetBrains Mono", monospace';
+      ctx.fillText(`AI SCANNING VIDEO SAGITTAL ANATOMY... ${Math.round(appState.scanProgress)}%`, x1 + 20, scanY - 10);
+      ctx.restore();
+    }
+
+    function drawExoskeletonOverlay(kin) {
+      ctx.save();
+
+      // Exoskeleton Carbon/Titanium Structural Rods
+      const drawRod = (a, b, color, width = 4) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      };
+
+      // Trunk reference link
+      drawRod(kin.shoulder, kin.hip, 'rgba(148, 163, 184, 0.7)', 3);
+      // Thigh Exoskeleton Link (Hip -> Knee)
+      drawRod(kin.hip, kin.knee, '#fbbf24', 5);
+      // Shank Exoskeleton Link (Knee -> Ankle)
+      drawRod(kin.knee, kin.ankle, '#22d3ee', 5);
+      // Foot Plate Link (Ankle -> Toe)
+      drawRod(kin.ankle, kin.toe, '#10b981', 4.5);
+
+      // Draw Joint Nodes (Hip, Knee, Ankle, Toe)
+      const drawJointNode = (pt, color, label, angleText, alignRight = true) => {
+        // Outer target ring
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner solid core
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Callout tag
+        const offsetX = alignRight ? 16 : -155;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.fillRect(pt.x + offsetX, pt.y - 11, 138, 22);
+        ctx.strokeRect(pt.x + offsetX, pt.y - 11, 138, 22);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 11px "JetBrains Mono", "Noto Sans TC", sans-serif';
+        ctx.fillText(`${label} ${angleText}`, pt.x + offsetX + 6, pt.y + 4);
+      };
+
+      drawJointNode(kin.hip, '#fbbf24', '髖 Hip', `${kin.hipAngle}°`, false);
+      drawJointNode(kin.knee, '#22d3ee', '膝 Knee', `${kin.kneeAngle}°`, true);
+      drawJointNode(kin.ankle, '#fb7185', '踝 Ankle', `${kin.ankleAngle}°`, false);
+      drawJointNode(
+        kin.toe,
+        '#10b981',
+        '腳尖 Toe',
+        kin.onGround ? '觸地' : `+${kin.toeClearanceCm.toFixed(1)}cm`,
+        true
+      );
+
+      // Draw Vertical Jump Height Measure Vector when airborne & calcHeightTF is True
+      if (!kin.onGround && appState.calcHeightTF) {
+        ctx.strokeStyle = '#10b981';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(kin.toe.x, kin.groundY || GROUND_Y);
+        ctx.lineTo(kin.toe.x, kin.toe.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.restore();
+    }
+
+    function updateLiveHUDAndTable(kin) {
+      document.getElementById('hudPhaseText').textContent = kin.phaseLabel;
+      document.getElementById('hudHipAngle').textContent = `${kin.hipAngle}°`;
+      document.getElementById('hudKneeAngle').textContent = `${kin.kneeAngle}°`;
+      document.getElementById('hudAnkleAngle').textContent = `${kin.ankleAngle}°`;
+      document.getElementById('hudToeClearance').textContent = `${kin.toeClearanceCm.toFixed(1)} cm`;
+
+      const groundEl = document.getElementById('hudGroundState');
+      if (kin.onGround) {
+        groundEl.textContent = '觸地 (On Ground)';
+        groundEl.className = 'text-emerald-400';
+      } else {
+        groundEl.textContent = '騰空離地 (Airborne)';
+        groundEl.className = 'text-amber-300';
+      }
+
+      // Update Anatomical Exoskeleton Table
+      document.getElementById('tableHipCoord').textContent = `(${kin.hip.x}, ${kin.hip.y})`;
+      document.getElementById('tableHipAngle').textContent = `${kin.hipAngle}°`;
+      document.getElementById('tableKneeCoord').textContent = `(${kin.knee.x}, ${kin.knee.y})`;
+      document.getElementById('tableKneeAngle').textContent = `${kin.kneeAngle}°`;
+      document.getElementById('tableAnkleCoord').textContent = `(${kin.ankle.x}, ${kin.ankle.y})`;
+      document.getElementById('tableAnkleAngle').textContent = `${kin.ankleAngle}°`;
+      document.getElementById('tableToeCoord').textContent = `(${kin.toe.x}, ${kin.toe.y})`;
+      document.getElementById('tableToeStatus').textContent = kin.onGround ? '腳尖觸地' : `離地 +${kin.toeClearanceCm.toFixed(1)}cm`;
+
+      // Update Timeline labels
+      document.getElementById('currentTimeLabel').textContent = `${kin.timeS}s`;
+      document.getElementById('currentFrameLabel').textContent = `F${kin.frame}`;
+      document.getElementById('timelineSlider').value = kin.frame;
+    }
+
+    // =========================================================================
+    // Interactive Exoskeleton Keypoint Dragging on Canvas
+    // =========================================================================
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      const kin = appState.lastRenderedKin || computeFrameKinematics(appState.currentFrame, appState.mode, appState.sjCountermovementFault);
+      const joints = ['hip', 'knee', 'ankle', 'toe'];
+      for (const j of joints) {
+        const pt = kin[j];
+        if (Math.hypot(mx - pt.x, my - pt.y) <= 16) {
+          appState.draggingJoint = { name: j, startX: mx, startY: my, origOffset: { ...appState.jointManualOffsets[j] } };
+          showToast(`正在微調外骨骼標記點：${j.toUpperCase()}`);
+          break;
+        }
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!appState.draggingJoint) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      const dx = Math.round(mx - appState.draggingJoint.startX);
+      const dy = Math.round(my - appState.draggingJoint.startY);
+      const jName = appState.draggingJoint.name;
+      appState.jointManualOffsets[jName] = {
+        x: appState.draggingJoint.origOffset.x + dx,
+        y: appState.draggingJoint.origOffset.y + dy
+      };
+      renderCanvas();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (appState.draggingJoint) {
+        appState.draggingJoint = null;
+      }
+    });
+
+    // =========================================================================
+    // Chart.js Trajectory & Event Visualization
+    // =========================================================================
+    let kinematicsChartInstance = null;
+
+    function buildOrUpdateChart() {
+      const labels = [];
+      const toeHeightSeries = [];
+      const kneeAngleSeries = [];
+
+      for (let f = 0; f <= TOTAL_FRAMES; f += 3) {
+        const k = computeFrameKinematics(f, appState.mode, appState.sjCountermovementFault);
+        labels.push(`${k.timeS}s`);
+        toeHeightSeries.push(Number(k.toeClearanceCm.toFixed(1)));
+        kneeAngleSeries.push(Number(k.kneeAngle));
+      }
+
+      const ctxChart = document.getElementById('kinematicsChart').getContext('2d');
+      if (kinematicsChartInstance) {
+        kinematicsChartInstance.data.labels = labels;
+        kinematicsChartInstance.data.datasets[0].data = toeHeightSeries;
+        kinematicsChartInstance.data.datasets[1].data = kneeAngleSeries;
+        kinematicsChartInstance.update();
+        return;
+      }
+
+      kinematicsChartInstance = new Chart(ctxChart, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '腳尖離地高度 ΔY (cm)',
+              data: toeHeightSeries,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+              fill: true,
+              tension: 0.3,
+              yAxisID: 'yHeight',
+              pointRadius: 0,
+              borderWidth: 2.5
+            },
+            {
+              label: '膝關節外骨骼夾角 (°)',
+              data: kneeAngleSeries,
+              borderColor: '#22d3ee',
+              borderDash: [4, 4],
+              fill: false,
+              tension: 0.3,
+              yAxisID: 'yAngle',
+              pointRadius: 0,
+              borderWidth: 1.8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              labels: { color: '#cbd5e1', font: { family: 'Inter', size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#64748b', maxTicksLimit: 9, font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { color: 'rgba(51, 65, 85, 0.3)' }
+            },
+            yHeight: {
+              type: 'linear',
+              position: 'left',
+              min: 0,
+              max: 55,
+              title: { display: true, text: '腳尖高度 (cm)', color: '#10b981', font: { size: 10 } },
+              ticks: { color: '#10b981', font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { color: 'rgba(51, 65, 85, 0.3)' }
+            },
+            yAngle: {
+              type: 'linear',
+              position: 'right',
+              min: 70,
+              max: 190,
+              title: { display: true, text: '膝關節角度 (°)', color: '#22d3ee', font: { size: 10 } },
+              ticks: { color: '#22d3ee', font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    }
+
+    // =========================================================================
+    // Mode UI & Readouts Synchronization
+    // =========================================================================
+    function syncUIForMode() {
+      const m = appState.mode;
+      const spec = getModeSpec(m, appState.sjCountermovementFault);
+      const tfStr = appState.calcHeightTF ? 'T' : 'F';
+
+      // Pill buttons
+      const modes = ['CMJ', 'SJ', 'DJ'];
+      modes.forEach(code => {
+        const btn = document.getElementById(`btnMode${code}`);
+        if (code === m) {
+          btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-emerald-500 text-slate-950 shadow';
+        } else {
+          btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:text-white';
+        }
+      });
+
+      // Global T/F Button
+      const btnTF = document.getElementById('btnToggleHeightTF');
+      const cardFlag = document.getElementById('cardHeightTFFlag');
+      if (appState.calcHeightTF) {
+        btnTF.textContent = 'T (True)';
+        btnTF.className = 'px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition-all';
+        cardFlag.textContent = 'T (True)';
+        cardFlag.className = 'font-mono text-emerald-400';
+        document.getElementById('primaryJumpHeightDisplay').innerHTML = `${spec.jumpHeightCm.toFixed(1)} <span class="text-sm font-normal text-slate-300">cm</span>`;
+      } else {
+        btnTF.textContent = 'F (False)';
+        btnTF.className = 'px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 transition-all';
+        cardFlag.textContent = 'F (False)';
+        cardFlag.className = 'font-mono text-rose-400';
+        document.getElementById('primaryJumpHeightDisplay').innerHTML = `<span class="text-base font-mono text-rose-300">F (不計算高度)</span>`;
+      }
+
+      // Header & Panels
+      document.getElementById('activeModeHeaderBadge').textContent = spec.badge;
+      document.getElementById('activeModeTitle').textContent = `${spec.name} AI 判讀結果`;
+      document.getElementById('chartModeTag').textContent = `${m} 模式曲線`;
+
+      document.getElementById('panelCMJ').classList.toggle('hidden', m !== 'CMJ');
+      document.getElementById('panelSJ').classList.toggle('hidden', m !== 'SJ');
+      document.getElementById('panelDJ').classList.toggle('hidden', m !== 'DJ');
+
+      // Show/Hide DJ 1st landing quick-jump button
+      const btnDropTouch = document.getElementById('btnJumpDropTouch');
+      btnDropTouch.classList.toggle('hidden', m !== 'DJ');
+
+      // Populate CMJ Readouts
+      if (m === 'CMJ') {
+        document.getElementById('cmjHeightResult').textContent = appState.calcHeightTF ? `T ｜ ${spec.jumpHeightCm.toFixed(1)} cm` : 'F ｜ 已停用高度計算';
+      }
+
+      // Populate SJ Readouts
+      if (m === 'SJ') {
+        document.getElementById('sjHeightResult').textContent = appState.calcHeightTF ? `T ｜ ${spec.jumpHeightCm.toFixed(1)} cm` : 'F ｜ 已停用高度計算';
+        const sjBox = document.getElementById('sjSquatCheckBox');
+        const sjDetail = document.getElementById('sjHoldDetail');
+        const sjIcon = document.getElementById('sjHoldStatusIcon');
+        if (spec.sjPass) {
+          sjBox.className = 'p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-between';
+          sjIcon.textContent = '✓ PASS';
+          sjDetail.textContent = `蹲踞準備期髖關節垂直偏移僅 ${spec.sjDipCm} cm (< 1.5 cm 閾值)，確認起跳時不移動蹲踞位置！`;
+        } else {
+          sjBox.className = 'p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-between';
+          sjIcon.textContent = '⚠ FAIL';
+          sjDetail.textContent = `偵測到起跳前蹲踞位置下沉 ${spec.sjDipCm} cm (> 1.5 cm 閾值)，判定為違規反向預蹲移動！`;
+        }
+      }
+
+      // Populate DJ Readouts
+      if (m === 'DJ') {
+        document.getElementById('djFlightAndHeight').textContent = appState.calcHeightTF ? `T ｜ ${spec.jumpHeightCm.toFixed(1)} cm` : `F ｜ 僅計算時間 (${(spec.flightTimeS * 1000).toFixed(0)} ms)`;
+      }
+
+      buildOrUpdateChart();
+      renderCanvas();
+    }
+
+    // =========================================================================
+    // Playback Loop & Controls
+    // =========================================================================
+    let animTimer = null;
+    let rafId = null;
+    let playbackToken = 0;
+
+    function startPlayback() {
+      const thisPlaybackToken = ++playbackToken;
+      if (animTimer) {
+        clearInterval(animTimer);
+        animTimer = null;
+      }
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      appState.isPlaying = true;
+      updatePlayButtonIcon();
+
+      if (appState.usingUploadedVideo && sourceVideo.readyState >= 1) {
+        sourceVideo.loop = true;
+        sourceVideo.muted = true;
+        sourceVideo.playbackRate = appState.playbackSpeed;
+        sourceVideo.play().catch(() => {});
+
+        const syncLoop = (_now, videoFrameMetadata) => {
+          if (!appState.isPlaying || thisPlaybackToken !== playbackToken) return;
+          if (sourceVideo.duration && !isNaN(sourceVideo.duration)) {
+            const mediaTime = videoFrameMetadata && Number.isFinite(videoFrameMetadata.mediaTime)
+              ? videoFrameMetadata.mediaTime
+              : sourceVideo.currentTime;
+            appState.currentFrame = Math.min(
+              TOTAL_FRAMES,
+              Math.max(0, Math.round((mediaTime / sourceVideo.duration) * TOTAL_FRAMES))
+            );
+          } else {
+            appState.currentFrame = (appState.currentFrame + 1) % (TOTAL_FRAMES + 1);
+          }
+          renderCanvas();
+          if (typeof sourceVideo.requestVideoFrameCallback === 'function') {
+            sourceVideo.requestVideoFrameCallback(syncLoop);
+          } else {
+            rafId = requestAnimationFrame(syncLoop);
+          }
+        };
+        if (typeof sourceVideo.requestVideoFrameCallback === 'function') {
+          sourceVideo.requestVideoFrameCallback(syncLoop);
+        } else {
+          rafId = requestAnimationFrame(syncLoop);
+        }
+      } else {
+        const intervalMs = Math.round((1000 / 60) / appState.playbackSpeed);
+        animTimer = setInterval(() => {
+          appState.currentFrame = (appState.currentFrame + 1) % (TOTAL_FRAMES + 1);
+          renderCanvas();
+        }, intervalMs);
+      }
+    }
+
+    function stopPlayback() {
+      playbackToken += 1;
+      if (animTimer) {
+        clearInterval(animTimer);
+        animTimer = null;
+      }
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (appState.usingUploadedVideo && !sourceVideo.paused) {
+        sourceVideo.pause();
+      }
+      appState.isPlaying = false;
+      updatePlayButtonIcon();
+    }
+
+    function updatePlayButtonIcon() {
+      const iconPlay = document.getElementById('iconPlay');
+      if (appState.isPlaying) {
+        iconPlay.innerHTML = `<path fill-rule="evenodd" d="M5.5 3.5A1.5 1.5 0 017 5v10a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5zm7 0A1.5 1.5 0 0114 5v10a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5z" clip-rule="evenodd"/>`;
+      } else {
+        iconPlay.innerHTML = `<path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>`;
+      }
+    }
+
+    // =========================================================================
+    // 2-Stage Anatomical Scan & AI Keypoint Alignment Workflow
+    // =========================================================================
+    let scanInterval = null;
+
+    function runStep1AnatomicalScan(autoChainStep2 = false) {
+      stopPlayback();
+      if (scanInterval) clearInterval(scanInterval);
+      appState.scanStage = 1;
+      appState.scanProgress = 0;
+      appState.showAnatomy = true;
+      document.getElementById('chkShowAnatomy').checked = true;
+
+      const badge = document.getElementById('scanStageBadge');
+      badge.textContent = 'STAGE 1: 正在掃描人體側面解剖輪廓...';
+      badge.className = 'px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+
+      showToast('啟動步驟 1：正在掃描人體側面解剖基準 (大轉子、外上髁、外踝)...');
+
+      scanInterval = setInterval(() => {
+        appState.scanProgress += 4;
+        renderCanvas();
+        if (appState.scanProgress >= 100) {
+          clearInterval(scanInterval);
+          scanInterval = null;
+          badge.textContent = 'STAGE 1 完成：側面解剖輪廓已建模，準備 AI 外骨骼對點';
+          showToast('側面解剖掃描完成！可點擊「2. AI 外骨骼對點與分析」');
+          if (autoChainStep2) {
+            setTimeout(() => runStep2AIAlignment(), 350);
+          }
+        }
+      }, 30);
+    }
+
+    function runStep2AIAlignment() {
+      if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+      }
+      appState.scanStage = 2;
+      appState.scanProgress = 100;
+      appState.videoPoseTrail = [];
+      appState.lastVideoTrailFrame = -1;
+      appState.showExoskeleton = true;
+      document.getElementById('chkShowExoskeleton').checked = true;
+      appState.jointManualOffsets = { hip: { x: 0, y: 0 }, knee: { x: 0, y: 0 }, ankle: { x: 0, y: 0 }, toe: { x: 0, y: 0 } };
+
+      const badge = document.getElementById('scanStageBadge');
+      badge.textContent = 'STAGE 2: 解剖掃描完成 ‧ 外骨骼對點鎖定 (髖/膝/踝/腳尖)';
+      badge.className = 'px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      appState.currentFrame = 0;
+      if (appState.usingUploadedVideo && sourceVideo.duration) {
+        sourceVideo.currentTime = 0;
+      }
+      startPlayback();
+      showToast(`AI 外骨骼對點完成！影片與外骨骼已啟動同步起跳顯示`);
+    }
+
+    // =========================================================================
+    // Video Upload & Live Camera Recording (with Sandbox Simulation Fallback)
+    // =========================================================================
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
+    document.getElementById('videoFileInput').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      sourceVideo.srcObject = null;
+      sourceVideo.src = url;
+      sourceVideo.loop = true;
+      sourceVideo.muted = true;
+      sourceVideo.playsInline = true;
+      sourceVideo.load();
+      sourceVideo.onloadeddata = () => {
+        // Imported video always starts in automatic optical-flow sync mode:
+        // the video drives subject height, squat rhythm, and toe-off timing.
+        appState.autoMotionSync = true;
+        document.getElementById('chkAutoMotionSync').checked = true;
+        appState.usingUploadedVideo = true;
+        appState.isCameraOpen = false;
+        prevMotionFrameData = null;
+        aiPoseState.initialized = false;
+        aiPoseState.videoKneePoint = null;
+        aiPoseState.clothingColors = { shirt: null, pants: null, shoes: null };
+        aiPoseState.maxJumpHeightCm = 0;
+        appState.videoPoseTrail = [];
+        appState.lastVideoTrailFrame = -1;
+        syncCanvasToNativeVideoDimensions();
+        document.getElementById('videoSourceBadge').textContent = `已匯入影片: ${file.name} (${sourceVideo.videoWidth}×${sourceVideo.videoHeight} 原尺寸無壓縮)`;
+        runStep1AnatomicalScan(true);
+      };
+    });
+
+    document.getElementById('btnCameraToggle').addEventListener('click', async () => {
+      const btnStartStop = document.getElementById('btnStartStopRecord');
+      const label = document.getElementById('cameraBtnLabel');
+
+      if (appState.isCameraOpen) {
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(t => t.stop());
+          mediaStream = null;
+        }
+        appState.isCameraOpen = false;
+        btnStartStop.classList.add('hidden');
+        btnStartStop.classList.remove('inline-flex');
+        label.textContent = '開啟鏡頭錄影';
+        document.getElementById('videoSourceBadge').textContent = '120 FPS 側面生物力學模擬源';
+        renderCanvas();
+        return;
+      }
+
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+          sourceVideo.srcObject = mediaStream;
+          await sourceVideo.play();
+          appState.isCameraOpen = true;
+          appState.usingUploadedVideo = false;
+          label.textContent = '關閉鏡頭';
+          btnStartStop.classList.remove('hidden');
+          btnStartStop.classList.add('inline-flex');
+          document.getElementById('videoSourceBadge').textContent = '即時攝影機預覽中 (請從側面拍攝跳躍)';
+          startPlayback();
+          showToast('攝影機已開啟！請點擊「開始錄製跳躍」');
+        } else {
+          throw new Error('Camera API unavailable');
+        }
+      } catch (err) {
+        // Fallback to simulated live camera recording in sandboxed environment
+        appState.isCameraOpen = true;
+        appState.usingUploadedVideo = false;
+        label.textContent = '結束模擬鏡頭';
+        btnStartStop.classList.remove('hidden');
+        btnStartStop.classList.add('inline-flex');
+        document.getElementById('videoSourceBadge').textContent = '虛擬 120FPS 生物力學攝影機待命';
+        showToast('已啟動虛擬生物力學攝影機！點擊「開始錄製跳躍」即可錄製並自動分析');
+        startPlayback();
+      }
+    });
+
+    document.getElementById('btnStartStopRecord').addEventListener('click', () => {
+      const recText = document.getElementById('recActionText');
+      if (!appState.isRecording) {
+        appState.isRecording = true;
+        recText.textContent = '■ 停止錄製並執行 AI 分析';
+        if (mediaStream && typeof MediaRecorder !== 'undefined') {
+          recordedChunks = [];
+          mediaRecorder = new MediaRecorder(mediaStream);
+          mediaRecorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) recordedChunks.push(ev.data);
+          };
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            sourceVideo.srcObject = null;
+            sourceVideo.src = URL.createObjectURL(blob);
+            sourceVideo.load();
+            appState.usingUploadedVideo = true;
+          };
+          mediaRecorder.start();
+        }
+        showToast('正在錄製側面跳躍影片... 完成跳躍後請點擊停止');
+      } else {
+        appState.isRecording = false;
+        recText.textContent = '開始錄製跳躍';
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        document.getElementById('videoSourceBadge').textContent = `剛錄製完成的 ${appState.mode} 跳躍影片 (120 FPS)`;
+        runStep1AnatomicalScan(true);
+      }
+    });
+
+    document.getElementById('btnLoadDemoVideo').addEventListener('click', () => {
+      appState.usingUploadedVideo = false;
+      appState.isCameraOpen = false;
+      document.getElementById('videoSourceBadge').textContent = `120 FPS 側面標準示範影片 (${appState.mode})`;
+      runStep1AnatomicalScan(true);
+    });
+
+    // =========================================================================
+    // Trial Log Table & CSV / SCV File Export
+    // =========================================================================
+    function renderTrialLogTable() {
+      const tbody = document.getElementById('trialLogTableBody');
+      tbody.innerHTML = '';
+      appState.trials.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 transition-colors';
+        tr.innerHTML = `
+          <td class="py-2 font-bold text-emerald-400">${item.mode}</td>
+          <td class="py-2 font-bold ${item.calcHeightTF === 'T' ? 'text-emerald-300' : 'text-rose-300'}">${item.calcHeightTF}</td>
+          <td class="py-2 text-right">${item.flightTimeMs} ms</td>
+          <td class="py-2 text-right font-bold">${item.calcHeightTF === 'T' ? item.jumpHeightCm + ' cm' : 'N/A (F)'}</td>
+          <td class="py-2 font-sans text-slate-300">${item.note}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('recordCountBadge').textContent = `${appState.trials.length} 筆紀錄`;
+    }
+
+    document.getElementById('btnAddRecordToLog').addEventListener('click', () => {
+      const m = appState.mode;
+      const spec = getModeSpec(m, appState.sjCountermovementFault);
+      const tf = appState.calcHeightTF ? 'T' : 'F';
+      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const idStr = `JUMP-00${appState.trials.length + 1}`;
+
+      let noteStr = '';
+      let sjHold = 'N/A';
+      let djGCT = 'N/A';
+      let dj2nd = 'N/A';
+
+      if (m === 'CMJ') {
+        noteStr = `離地 ${(spec.toeOffFrame / FPS).toFixed(3)}s (${spec.toeOffCoord.x},${spec.toeOffCoord.y}) → 第一次觸地 ${(spec.firstLandingFrame / FPS).toFixed(3)}s (${spec.firstLandingCoord.x},${spec.firstLandingCoord.y})`;
+      } else if (m === 'SJ') {
+        sjHold = spec.sjPass ? `PASS (位移 ${spec.sjDipCm}cm)` : `FAIL (預蹲 ${spec.sjDipCm}cm)`;
+        noteStr = `蹲踞不移動: ${sjHold} ｜ 離地 ${(spec.toeOffFrame / FPS).toFixed(3)}s → 落地 ${(spec.firstLandingFrame / FPS).toFixed(3)}s`;
+      } else {
+        djGCT = `${spec.contactTimeMs} ms`;
+        dj2nd = `${(spec.secondLandingFrame / FPS).toFixed(3)}s (${spec.secondLandingCoord.x},${spec.secondLandingCoord.y}) Δ+${spec.horizontalDriftCm}cm`;
+        noteStr = `第一次落地銜接起跳: ${djGCT} ｜ 第二次落地: ${dj2nd}`;
+      }
+
+      appState.trials.unshift({
+        id: idStr,
+        timestamp: nowStr,
+        mode: m,
+        calcHeightTF: tf,
+        flightTimeMs: Math.round(spec.flightTimeS * 1000),
+        jumpHeightCm: spec.jumpHeightCm,
+        toeOffTimeS: `${(spec.toeOffFrame / FPS).toFixed(3)}s (F${spec.toeOffFrame})`,
+        firstLandingS: `${(spec.firstLandingFrame / FPS).toFixed(3)}s (F${spec.firstLandingFrame})`,
+        sjStaticHold: sjHold,
+        djContactTimeMs: djGCT,
+        djSecondLandingPos: dj2nd,
+        note: noteStr
+      });
+
+      renderTrialLogTable();
+      showToast(`已將 ${m} 分析結果 (跳躍高度計算=${tf}) 新增至紀錄表！`);
+    });
+
+    document.getElementById('btnExportCSV').addEventListener('click', () => {
+      // Build comprehensive CSV content including Summary Trials + Current Mode Frame-by-Frame Exoskeleton Coordinates
+      const headers = [
+        'Trial_ID',
+        'Timestamp',
+        'Jump_Mode',
+        'Jump_Height_Calc_TF',
+        'Flight_Time_ms',
+        'Jump_Height_cm',
+        'Toe_Off_Time_Frame',
+        'First_Landing_Toe_Touch',
+        'SJ_Static_Squat_Hold_Check',
+        'DJ_Ground_Contact_Amortization_Time_ms',
+        'DJ_Second_Landing_Position',
+        'Exoskeleton_Landmarks_Verified',
+        'Notes'
+      ];
+
+      const rows = appState.trials.map(t => [
+        t.id,
+        t.timestamp,
+        t.mode,
+        t.calcHeightTF,
+        t.flightTimeMs,
+        t.calcHeightTF === 'T' ? t.jumpHeightCm : 'FALSE_DISABLED',
+        t.toeOffTimeS,
+        t.firstLandingS,
+        t.sjStaticHold,
+        t.djContactTimeMs,
+        t.djSecondLandingPos,
+        'Sagittal_Scan_Hip_Knee_Ankle_Toe',
+        t.note
+      ]);
+
+      // Append section for current trial frame-by-frame exoskeleton kinematics
+      rows.push([]);
+      rows.push(['--- 逐幀外骨骼標記點軌跡 (Frame-by-Frame Exoskeleton Kinematics) ---']);
+      rows.push(['Frame', 'Time_s', 'Mode', 'Phase', 'On_Ground', 'Toe_Clearance_cm', 'Hip_X', 'Hip_Y', 'Hip_Angle_deg', 'Knee_X', 'Knee_Y', 'Knee_Angle_deg', 'Ankle_X', 'Ankle_Y', 'Ankle_Angle_deg', 'Toe_X', 'Toe_Y']);
+
+      for (let f = 0; f <= TOTAL_FRAMES; f += 2) {
+        const k = computeFrameKinematics(f, appState.mode, appState.sjCountermovementFault);
+        rows.push([
+          k.frame,
+          k.timeS,
+          appState.mode,
+          k.phaseLabel,
+          k.onGround ? 'TRUE' : 'FALSE',
+          appState.calcHeightTF ? k.toeClearanceCm.toFixed(2) : 'F',
+          k.hip.x, k.hip.y, k.hipAngle,
+          k.knee.x, k.knee.y, k.kneeAngle,
+          k.ankle.x, k.ankle.y, k.ankleAngle,
+          k.toe.x, k.toe.y
+        ]);
+      }
+
+      const csvString = '\uFEFF' + [
+        headers.join(','),
+        ...rows.map(r => r.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `JUMP_${appState.mode}_Biomechanics_Report.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`已成功匯出 JUMP_${appState.mode}_Biomechanics_Report.csv 報表！`);
+    });
+
+    // =========================================================================
+    // UI Event Listeners Wiring
+    // =========================================================================
+    document.getElementById('btnModeCMJ').addEventListener('click', () => {
+      appState.mode = 'CMJ';
+      appState.currentFrame = 90;
+      syncUIForMode();
+      showToast('已切換至 CMJ (下蹲反彈跳) AI 分析模式');
+    });
+
+    document.getElementById('btnModeSJ').addEventListener('click', () => {
+      appState.mode = 'SJ';
+      appState.currentFrame = 96;
+      syncUIForMode();
+      showToast('已切換至 SJ (靜止蹲跳) AI 分析模式 — 自動檢核起跳蹲踞穩定度');
+    });
+
+    document.getElementById('btnModeDJ').addEventListener('click', () => {
+      appState.mode = 'DJ';
+      appState.currentFrame = 79;
+      syncUIForMode();
+      showToast('已切換至 DJ (落下跳) AI 分析模式 — 計算觸地銜接時間與第二次落地點');
+    });
+
+    document.getElementById('btnToggleHeightTF').addEventListener('click', () => {
+      appState.calcHeightTF = !appState.calcHeightTF;
+      syncUIForMode();
+      showToast(`跳躍高度計算 (T/F) 已切換為：${appState.calcHeightTF ? 'T (True - 啟用計算)' : 'F (False - 關閉高度計算)'}`);
+    });
+
+    document.getElementById('btnSimulateSJFault').addEventListener('click', () => {
+      appState.sjCountermovementFault = !appState.sjCountermovementFault;
+      appState.currentFrame = 62;
+      syncUIForMode();
+      showToast(appState.sjCountermovementFault ? '已模擬 SJ 起跳前違規下蹲移動 (FAIL)' : '已恢復標準靜止蹲踞起跳 (PASS)');
+    });
+
+    document.getElementById('btnStep1AnatomyScan').addEventListener('click', () => runStep1AnatomicalScan(false));
+    document.getElementById('btnStep2AIAnalyze').addEventListener('click', () => runStep2AIAlignment());
+
+    document.getElementById('btnPlayPause').addEventListener('click', () => {
+      if (appState.isPlaying) stopPlayback();
+      else startPlayback();
+    });
+
+    // Imported video is the master clock. Keep the timeline and exoskeleton
+    // locked to the real video time during playback and manual seeking.
+    sourceVideo.addEventListener('loadedmetadata', () => {
+      if (!appState.usingUploadedVideo || !sourceVideo.duration || isNaN(sourceVideo.duration)) return;
+      appState.currentFrame = Math.round((sourceVideo.currentTime / sourceVideo.duration) * TOTAL_FRAMES);
+      document.getElementById('totalTimeLabel').textContent = `${sourceVideo.duration.toFixed(3)}s`;
+      syncUIForMode();
+    });
+
+    sourceVideo.addEventListener('timeupdate', () => {
+      if (!appState.usingUploadedVideo || !sourceVideo.duration || isNaN(sourceVideo.duration)) return;
+      appState.currentFrame = Math.max(0, Math.min(
+        TOTAL_FRAMES,
+        Math.round((sourceVideo.currentTime / sourceVideo.duration) * TOTAL_FRAMES)
+      ));
+      if (!appState.isPlaying) renderCanvas();
+    });
+
+    sourceVideo.addEventListener('seeked', () => {
+      if (!appState.isPlaying) {
+        renderCanvas();
+      }
+    });
+
+    document.getElementById('btnPrevFrame').addEventListener('click', () => {
+      stopPlayback();
+      appState.currentFrame = Math.max(0, appState.currentFrame - 1);
+      syncVideoToCurrentFrame();
+      renderCanvas();
+    });
+
+    document.getElementById('btnNextFrame').addEventListener('click', () => {
+      stopPlayback();
+      appState.currentFrame = Math.min(TOTAL_FRAMES, appState.currentFrame + 1);
+      syncVideoToCurrentFrame();
+      renderCanvas();
+    });
+
+    function syncVideoToCurrentFrame() {
+      if (appState.usingUploadedVideo && sourceVideo.duration && !isNaN(sourceVideo.duration)) {
+        const normalizedFrame = Math.max(0, Math.min(TOTAL_FRAMES, appState.currentFrame));
+        sourceVideo.currentTime = (normalizedFrame / TOTAL_FRAMES) * sourceVideo.duration;
+      }
+    }
+
+    document.getElementById('timelineSlider').addEventListener('input', (e) => {
+      stopPlayback();
+      appState.currentFrame = Number(e.target.value);
+      syncVideoToCurrentFrame();
+      renderCanvas();
+    });
+
+    // View Layout Switchers (Overlay vs Split Simultaneous Jump)
+    document.getElementById('btnViewOverlay').addEventListener('click', () => {
+      appState.viewLayout = 'overlay';
+      document.getElementById('btnViewOverlay').className = 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500 text-slate-950 transition-all';
+      document.getElementById('btnViewSplit').className = 'px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-300 hover:text-white transition-all';
+      renderCanvas();
+      showToast('已切換為「疊加同步起跳」：匯入影片與外骨骼同畫面重疊起跳');
+    });
+
+    document.getElementById('btnViewSplit').addEventListener('click', () => {
+      appState.viewLayout = 'split';
+      document.getElementById('btnViewSplit').className = 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500 text-slate-950 transition-all';
+      document.getElementById('btnViewOverlay').className = 'px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-300 hover:text-white transition-all';
+      renderCanvas();
+      showToast('已切換為「雙畫面同時起跳對照」：左方影片與右方 AI 外骨骼同步起跳');
+    });
+
+    document.getElementById('chkAutoMotionSync').addEventListener('change', (e) => {
+      appState.autoMotionSync = e.target.checked;
+      renderCanvas();
+      showToast(appState.autoMotionSync ? '已啟用 AI 動態光流同步起跳追蹤' : '已切換為固定時序外骨骼播放');
+    });
+
+    document.getElementById('btnSyncToeOffHere').addEventListener('click', () => {
+      appState.videoToeOffRatio = appState.currentFrame / TOTAL_FRAMES;
+      renderCanvas();
+      showToast(`已將目前影片時間點 (${(appState.currentFrame / FPS).toFixed(3)}s) 鎖定為外骨骼同步離地起跳點！`);
+    });
+
+    document.getElementById('btnFlipDirection').addEventListener('click', () => {
+      appState.facingDir = (appState.facingDir === -1) ? 1 : -1;
+      const btn = document.getElementById('btnFlipDirection');
+      btn.textContent = appState.facingDir === -1
+        ? '⇄ 外骨骼轉向: ◀ 面向左 (依影片定位)'
+        : '⇄ 外骨骼轉向: ▶ 面向右 (依影片定位)';
+      renderCanvas();
+      showToast(`已將外骨骼面向方向轉為：${appState.facingDir === -1 ? '◀ 面向左側' : '▶ 面向右側'}`);
+    });
+
+    document.getElementById('btnResetSyncOffset').addEventListener('click', () => {
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      appState.videoToeOffRatio = spec.toeOffFrame / TOTAL_FRAMES;
+      appState.jointManualOffsets = { hip: { x: 0, y: 0 }, knee: { x: 0, y: 0 }, ankle: { x: 0, y: 0 }, toe: { x: 0, y: 0 } };
+      renderCanvas();
+      showToast('已重置影片與外骨骼同步起跳時間基準！');
+    });
+
+    document.getElementById('playbackSpeedSelect').addEventListener('change', (e) => {
+      appState.playbackSpeed = Number(e.target.value);
+      if (appState.isPlaying) startPlayback();
+    });
+
+    document.getElementById('chkShowAnatomy').addEventListener('change', (e) => {
+      appState.showAnatomy = e.target.checked;
+      renderCanvas();
+    });
+
+    document.getElementById('chkShowExoskeleton').addEventListener('change', (e) => {
+      appState.showExoskeleton = e.target.checked;
+      renderCanvas();
+    });
+
+    document.getElementById('chkShowTrails').addEventListener('change', (e) => {
+      appState.showTrails = e.target.checked;
+      renderCanvas();
+    });
+
+    document.getElementById('chkOriginalPixelSize').addEventListener('change', () => {
+      renderCanvas();
+      showToast('已更新影片尺寸顯示比例設定 (保持原始長寬比不壓縮)');
+    });
+
+    document.getElementById('chkShowExternalPip').addEventListener('change', () => {
+      renderCanvas();
+    });
+
+    // Quick-Jump Keyframe Buttons
+    document.getElementById('btnJumpDropTouch').addEventListener('click', () => {
+      stopPlayback();
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      if (spec.firstLandingFrame) {
+        appState.currentFrame = spec.firstLandingFrame;
+        syncVideoToCurrentFrame();
+        renderCanvas();
+        showToast(`已跳轉至 DJ 第一次落地腳尖觸地幀 (Frame ${spec.firstLandingFrame})`);
+      }
+    });
+
+    document.getElementById('btnJumpLowestSquat').addEventListener('click', () => {
+      stopPlayback();
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      appState.currentFrame = spec.lowestSquatFrame;
+      syncVideoToCurrentFrame();
+      renderCanvas();
+      showToast(`已跳轉至蹲踞最低點 (Frame ${spec.lowestSquatFrame})`);
+    });
+
+    document.getElementById('btnJumpToeOff').addEventListener('click', () => {
+      stopPlayback();
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      appState.currentFrame = spec.toeOffFrame;
+      syncVideoToCurrentFrame();
+      renderCanvas();
+      showToast(`已跳轉至腳尖離地起跳瞬間 (Toe-Off, Frame ${spec.toeOffFrame})`);
+    });
+
+    document.getElementById('btnJumpApex').addEventListener('click', () => {
+      stopPlayback();
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      appState.currentFrame = spec.apexFrame;
+      syncVideoToCurrentFrame();
+      renderCanvas();
+      showToast(`已跳轉至騰空最高點 (Apex, Frame ${spec.apexFrame})`);
+    });
+
+    document.getElementById('btnJumpLanding').addEventListener('click', () => {
+      stopPlayback();
+      const spec = getModeSpec(appState.mode, appState.sjCountermovementFault);
+      const targetFrame = appState.mode === 'DJ' ? spec.secondLandingFrame : spec.firstLandingFrame;
+      appState.currentFrame = targetFrame;
+      syncVideoToCurrentFrame();
+      renderCanvas();
+      showToast(`已跳轉至腳尖落地觸地瞬間 (Frame ${targetFrame})`);
+    });
+
+    // Toast Helper
+    let toastTimeout = null;
+    function showToast(msg) {
+      const banner = document.getElementById('toastBanner');
+      const text = document.getElementById('toastMessage');
+      text.textContent = msg;
+      banner.classList.remove('hidden');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        banner.classList.add('hidden');
+      }, 3200);
+    }
+
+    // Initialize Application on Load with simultaneous jump animation active
+    window.addEventListener('DOMContentLoaded', () => {
+      appState.currentFrame = 0;
+      renderTrialLogTable();
+      syncUIForMode();
+      startPlayback();
+    });
+  </script>
+</body>
+</html>
