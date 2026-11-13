@@ -45,6 +45,15 @@
     .btn-primary:not(:disabled):hover { background: var(--accent2); }
     .btn-ghost { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
     .btn-ghost:not(:disabled):hover { background: #273449; }
+    .btn-line { background: #06C755; color: #ffffff; }
+    .btn-line:not(:disabled):hover { background: #05b34c; }
+    .series-pill { display: inline-flex; align-items: center; gap: .35rem; padding: .38rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 700; border: 1.5px solid #334155; background: #0f172a; color: #94a3b8; transition: all .15s; user-select: none; }
+    .series-pill.on { color: #f8fafc; background: #1e293b; border-color: var(--pill-color, #10b981); box-shadow: 0 0 0 1px rgba(255,255,255,.05); }
+    .series-pill .dot { width: .6rem; height: .6rem; border-radius: 999px; background: var(--pill-color, #10b981); opacity: .35; }
+    .series-pill.on .dot { opacity: 1; }
+    .zoom-pill { padding: .32rem .65rem; border-radius: 10px; font-size: .76rem; font-weight: 700; background: #0f172a; color: #94a3b8; border: 1px solid #1e293b; transition: all .15s; }
+    .zoom-pill.active { background: var(--accent); color: #04130d; border-color: var(--accent); }
+    #chartWrap { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
     .btn-sm { padding: .35rem .65rem; font-size: .78rem; border-radius: 9px; }
     .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 700; }
     .step-btn { display: flex; align-items: center; gap: .55rem; padding: .55rem .8rem; border-radius: 12px; font-weight: 700; font-size: .85rem; color: #64748b; }
@@ -313,22 +322,97 @@
           <button id="btnSaveTrial" class="btn btn-primary">💾 儲存這次試跳</button>
           <div class="grid grid-cols-2 gap-2">
             <button id="btnReport" class="btn btn-ghost">📄 列印／存 PDF</button>
-            <button id="btnCsvFrames" class="btn btn-ghost">⬇ 逐格 CSV</button>
+            <button id="btnCsvFrames" class="btn btn-ghost" title="從 1 秒開始紀錄起跳高度、三關節角度與最後綜合統計數據">⬇ 逐格 CSV</button>
           </div>
+          <button id="btnLineShare" class="btn btn-line">💬 輸出檔案／報告到 LINE</button>
           <button id="btnNewVideo" class="btn btn-ghost">📂 分析下一支影片</button>
         </div>
       </div>
     </aside>
   </main>
 
-  <!-- Below: chart, key frames, trials, athlete -->
+  <!-- Below: chart, summary stats, key frames, trials, athlete -->
   <section class="wrap-w max-w-7xl mx-auto px-4 pb-10 space-y-4">
-    <div id="chartCard" class="card p-4 hidden">
+    <div id="chartCard" class="card p-3 sm:p-4 hidden">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <h3 class="font-bold">關節角度與腳尖高度曲線</h3>
-        <span class="text-xs text-slate-400">點圖表可跳到該時間・點圖例可隱藏曲線</span>
+        <div>
+          <h3 class="font-bold text-base">關節角度與起跳高度曲線</h3>
+          <p class="text-xs text-slate-400">👆 在圖表上左右滑動（拖曳）可同步逐格預覽影片與數據</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-1" id="chartZoomGroup">
+          <button class="zoom-pill active" data-czoom="focus" title="自動放大至起跳與落地關鍵區間">🔍 聚焦跳躍</button>
+          <button class="zoom-pill" data-czoom="1s" title="顯示 1.0 秒至結束（與 CSV 範圍一致）">📏 1秒至結束</button>
+          <button class="zoom-pill" data-czoom="all" title="顯示完整分析時間範圍">🌐 全程</button>
+          <button id="btnChartTall" class="zoom-pill" title="切換圖表高度">↕ 加高</button>
+        </div>
       </div>
-      <div class="h-64"><canvas id="chart"></canvas></div>
+
+      <!-- Finger-friendly curve toggle pills -->
+      <div class="flex flex-wrap items-center gap-1.5 mb-2.5" id="chartSeriesPills">
+        <button class="series-pill on" data-series="0" style="--pill-color:#22d3ee"><span class="dot"></span>膝屈曲 (°)</button>
+        <button class="series-pill on" data-series="1" style="--pill-color:#fbbf24"><span class="dot"></span>髖屈曲 (°)</button>
+        <button class="series-pill on" data-series="2" style="--pill-color:#fb7185"><span class="dot"></span>踝角度 (°)</button>
+        <button class="series-pill on" data-series="3" style="--pill-color:#34d399"><span class="dot"></span>腳尖高度 (cm)</button>
+        <button class="series-pill" data-series="4" style="--pill-color:#a78bfa"><span class="dot"></span>髖垂直位移 (cm)</button>
+      </div>
+
+      <!-- Fixed live cursor readout bar (no finger occlusion on phones) -->
+      <div id="chartReadoutBar" class="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-2.5 p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+        <div><div class="text-[10px] text-slate-400">目前時間／格</div><div class="mono text-xs font-bold text-slate-200" id="croTime">—</div></div>
+        <div><div class="text-[10px] text-cyan-300">膝屈曲</div><div class="mono text-xs font-bold text-cyan-300" id="croKnee">—</div></div>
+        <div><div class="text-[10px] text-amber-300">髖屈曲</div><div class="mono text-xs font-bold text-amber-300" id="croHip">—</div></div>
+        <div><div class="text-[10px] text-rose-300">踝 (+背/−蹠)</div><div class="mono text-xs font-bold text-rose-300" id="croAnkle">—</div></div>
+        <div><div class="text-[10px] text-emerald-300">腳尖離地</div><div class="mono text-xs font-bold text-emerald-300" id="croToe">—</div></div>
+        <div><div class="text-[10px] text-violet-300">髖部垂直位移</div><div class="mono text-xs font-bold text-violet-300" id="croHipDisp">—</div></div>
+      </div>
+
+      <!-- Interactive chart container -->
+      <div id="chartWrap" class="relative h-72 sm:h-80 select-none">
+        <canvas id="chart"></canvas>
+      </div>
+
+      <!-- Bottom quick-step & key-event jump bar for mobile convenience -->
+      <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-1">
+          <button class="btn btn-ghost btn-sm !px-2.5" id="btnChartPrev5" title="後退 5 格">⏪ −5格</button>
+          <button class="btn btn-ghost btn-sm !px-2.5" id="btnChartPrev1" title="後退 1 格">◀ −1格</button>
+          <button class="btn btn-primary btn-sm !px-3" id="btnChartPlay" title="播放／暫停">▶ 播放</button>
+          <button class="btn btn-ghost btn-sm !px-2.5" id="btnChartNext1" title="前進 1 格">+1格 ▶</button>
+          <button class="btn btn-ghost btn-sm !px-2.5" id="btnChartNext5" title="前進 5 格">+5格 ⏩</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-1" id="chartEventChips"></div>
+      </div>
+    </div>
+
+    <div id="statsCard" class="card p-4 hidden">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <h3 class="font-bold">起跳過程高度與三關節活動角度綜合統計 <span class="text-xs text-emerald-300 font-normal" id="statsRangeBadge">（1.000 s 至結束）</span></h3>
+          <p class="text-xs text-slate-400 mt-0.5">匯出之 CSV 檔案會從第 1 秒開始逐格紀錄起跳高度與髖、膝、踝三關節角度，並在檔案最下方附上完整綜合統計表。</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnCsvFrames2" class="btn btn-primary btn-sm">⬇ 匯出 CSV（1秒起＋綜合統計）</button>
+          <button id="btnLineShareStats" class="btn btn-line btn-sm">💬 輸出到 LINE</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="text-left py-2 pr-2">統計項目</th>
+              <th class="text-right pr-2">平均值 (Mean)</th>
+              <th class="text-right pr-2">標準差 (SD)</th>
+              <th class="text-right pr-2">最小值 (Min)</th>
+              <th class="text-right pr-2">最大值 (Max)</th>
+              <th class="text-right pr-2">活動範圍 (ROM)</th>
+              <th class="text-right pr-2">下蹲最低點</th>
+              <th class="text-right pr-2">離地瞬間 (T)</th>
+              <th class="text-right">起跳蹬伸變化量</th>
+            </tr>
+          </thead>
+          <tbody id="statsBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="keyframeCard" class="card p-4 hidden">
@@ -339,8 +423,9 @@
     <div id="trialCard" class="card p-4 hidden">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 class="font-bold">試跳紀錄 <span class="text-xs text-slate-400 font-normal">（每種測驗最多 3 次，★ = 最佳）</span></h3>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <button id="btnCsvTrials" class="btn btn-ghost btn-sm">⬇ 匯出紀錄 CSV</button>
+          <button id="btnLineShareTrials" class="btn btn-line btn-sm">💬 輸出紀錄到 LINE</button>
         </div>
       </div>
       <div class="overflow-x-auto">
@@ -387,9 +472,56 @@
       <div class="mt-4 p-3 rounded-xl bg-slate-900 text-xs text-slate-400 space-y-1">
         <p><b class="text-slate-200">跳高怎麼算？</b>跳高 = g × 滯空時間² ÷ 8（g = 9.81 m/s²）。</p>
         <p><b class="text-slate-200">角度定義</b>：髖、膝屈曲 = 180° − 關節夾角（站直 = 0°）；踝 = 90° − 小腿與腳掌夾角（中立 = 0°，+ 背屈、− 蹠屈）。</p>
-        <p><b class="text-slate-200">CSV 時間</b>：「Time_from_ToeOff_s」以離地為 0，離地前為負、離地後為正。</p>
+        <p><b class="text-slate-200">CSV 內容與綜合統計</b>：從影片第 1 秒（1.0 s）開始紀錄至結束，逐格包含起跳過程高度（腳尖離地高度、髖部垂直位移、髖部離地高度）與髖、膝、踝三關節活動角度，並於檔案底部自動附上平均值、標準差、最小值、最大值、活動範圍（ROM）與起跳蹬伸變化量等綜合統計數據。</p>
         <p><b class="text-slate-200">隱私</b>：影片只在你的瀏覽器裡分析，不會上傳。</p>
       </div>
+    </div>
+  </div>
+
+  <!-- LINE Export Modal -->
+  <div id="lineModal" class="hidden fixed inset-0 z-50 bg-black/75 grid place-items-center p-4">
+    <div class="card max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto border border-emerald-500/30">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-lg bg-[#06C755] text-white font-black grid place-items-center text-sm">L</span>
+          <div>
+            <h3 class="text-lg font-black">輸出檔案與報告到 LINE</h3>
+            <p class="text-xs text-slate-400">可傳送 CSV 數據檔、視覺化報告圖卡或綜合統計文字至 LINE</p>
+          </div>
+        </div>
+        <button id="btnLineClose" class="btn btn-ghost btn-sm">✕</button>
+      </div>
+
+      <div class="space-y-2.5 mb-4">
+        <button id="btnLineSendCsv" class="btn btn-line w-full justify-between !py-3">
+          <span>📁 傳送「1秒起逐格＋綜合統計 CSV 檔」到 LINE</span>
+          <span class="text-xs bg-black/20 px-2 py-0.5 rounded-full">.CSV 檔案</span>
+        </button>
+        <button id="btnLineSendImg" class="btn btn-ghost w-full justify-between !py-3 border-emerald-500/40 hover:border-emerald-400">
+          <span>🖼️ 傳送「跳躍分析＋統計報告圖卡」到 LINE</span>
+          <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">.PNG 長圖</span>
+        </button>
+        <button id="btnLineSendTrialsCsv" class="btn btn-ghost w-full justify-between !py-2.5">
+          <span>📋 傳送「已儲存試跳紀錄總表 CSV」到 LINE</span>
+          <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">試跳紀錄</span>
+        </button>
+      </div>
+
+      <div class="mb-3">
+        <div class="flex items-center justify-between text-xs font-bold text-slate-300 mb-1">
+          <span>LINE 訊息摘要預覽（可自行編輯）</span>
+          <button id="btnLineCopyText" class="text-emerald-400 hover:underline">📋 複製文字</button>
+        </div>
+        <textarea id="lineMsgPreview" rows="7" class="field mono text-xs leading-relaxed"></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <button id="btnLineSendText" class="btn btn-line btn-sm !py-2.5">💬 開啟 LINE 傳送文字摘要</button>
+        <button id="btnLineDownloadBoth" class="btn btn-ghost btn-sm !py-2.5">⬇ 同時下載 CSV＋報告圖卡</button>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-3 leading-relaxed">
+        💡 <b>手機／平板</b>點擊上方按鈕可直接喚起系統分享選單，選擇 <b>LINE</b> 即可將 <b>.CSV 檔案</b>或<b>報告圖片</b>直接傳進聊天室；<b>電腦版</b>會自動下載檔案、複製摘要並開啟 LINE 分享視窗，可直接將下載好的檔案拖曳至 LINE 對話框傳送。
+      </p>
     </div>
   </div>
 
@@ -537,7 +669,7 @@
       $('dropTitle').textContent = n === 1 ? '先完成旁邊的安全確認' : '把側面跳躍影片拖到這裡';
       $('dropSub').textContent = n === 1 ? '完成後即可把側面跳躍影片拖到這裡，或選擇影片' : '或按「選擇影片」／「用手機錄影」';
       $('chartCard').classList.toggle('hidden', !(n >= 3 && S.track));
-      ['keyframeCard', 'trialCard', 'athleteCard'].forEach(id => $(id).classList.toggle('hidden', n !== 4));
+      ['statsCard', 'keyframeCard', 'trialCard', 'athleteCard'].forEach(id => $(id).classList.toggle('hidden', n !== 4));
       if (n === 3) updatePanel3();
       if (n === 4) enterResults();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -642,7 +774,7 @@
       if (!file) return;
       if (S.maxStep < 2) { toast('請先完成安全確認'); return; }
       if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|m4v|avi)$/i.test(file.name)) { toast('請選擇影片檔'); return; }
-      pose.token++;                       // cancel any running analysis
+      pose.token++;                        // cancel any running analysis
       S.analyzing = false;
       showAnalyzeBox(false);
       if (S.objUrl) URL.revokeObjectURL(S.objUrl);
@@ -696,7 +828,7 @@
       if (!S.slowmo) {
         const token = pose.token;
         const fps = await measureFileFps();
-        if (token !== pose.token) return;            // another file was loaded meanwhile
+        if (token !== pose.token) return;             // another file was loaded meanwhile
         if (fps && fps !== S.fps) {
           S.fps = fps;
           $('fpsSel').value = String(fps);
@@ -932,6 +1064,7 @@
       S.ev = detectEvents(S.track, S.det, S.test);
       buildChart();
       updatePanel3();
+      if (S.step === 4) renderSummaryStats();
       render();
     }
 
@@ -1144,6 +1277,7 @@
         // only report toe clearance while airborne — on the ground it is landmark noise
         toeCm: st.air ? Math.max(0, (S.det.groundY - p.toe.y) / ppc) : 0,
         hipDispCm: (S.det.standHipY - p.hip.y) / ppc,
+        hipHeightCm: Math.max(0, (S.det.groundY - p.hip.y) / ppc),
         ...st
       };
     }
@@ -1267,6 +1401,14 @@
       $('roHip').textContent = `${fmt(k.hipFlex)}°`;
       $('roKnee').textContent = `${fmt(k.kneeFlex)}°`;
       $('roAnkle').textContent = `${signed(k.ankle)}°`;
+      if ($('croTime')) {
+        $('croTime').textContent = `${S.ev && S.ev.toeOff != null ? signed(relT(t), 3) + ' s' : frameStart(t).toFixed(2) + ' s'} (#${fi})`;
+        $('croKnee').textContent = `${fmt(k.kneeFlex, 1)}°`;
+        $('croHip').textContent = `${fmt(k.hipFlex, 1)}°`;
+        $('croAnkle').textContent = `${signed(k.ankle, 1)}°`;
+        $('croToe').textContent = `${fmt(k.toeCm, 1)} cm`;
+        $('croHipDisp').textContent = `${signed(k.hipDispCm, 1)} cm`;
+      }
       $('phasePill').textContent = `${k.air ? '🟡 騰空' : '🟢 觸地'}・${k.phase}`;
       $('phasePill').className = `chip ${k.mark ? 'bg-emerald-500 text-slate-950' : k.air ? 'bg-amber-500/20 text-amber-200' : 'bg-slate-800 text-slate-200'}`;
     }
@@ -1281,7 +1423,11 @@
         else requestAnimationFrame(frameLoop);
       }
     }
-    const setPlayLabels = (playing) => { $('btnPlay').textContent = playing ? '⏸ 暫停' : '▶ 播放'; $('btnPlay2').textContent = playing ? '⏸' : '▶'; };
+    const setPlayLabels = (playing) => {
+      $('btnPlay').textContent = playing ? '⏸ 暫停' : '▶ 播放';
+      $('btnPlay2').textContent = playing ? '⏸' : '▶';
+      if ($('btnChartPlay')) $('btnChartPlay').textContent = playing ? '⏸ 暫停' : '▶ 播放';
+    };
     video.addEventListener('play', () => { setPlayLabels(true); frameLoop(); });
     video.addEventListener('pause', () => { setPlayLabels(false); render(); });
     video.addEventListener('ended', () => setPlayLabels(false));
@@ -1391,6 +1537,7 @@
       S.keyframes = [];
       buildChart();
       updatePanel3();
+      if (S.step === 4) renderSummaryStats();
       render();
     }
 
@@ -1497,10 +1644,14 @@
         if (m.heightCm != null) m.rsi = (m.heightCm / 100) / (m.contactMs / 1000);
       }
       const low = ev.lowest != null ? kinAt(ev.lowest) : null;
-      if (low) { m.kneeLow = low.kneeFlex; m.hipLow = low.hipFlex; m.trunkLow = low.trunk; m.ankleLow = low.ankle; }
+      if (low) { m.kneeLow = low.kneeFlex; m.hipLow = low.hipFlex; m.trunkLow = low.trunk; m.ankleLow = low.ankle; m.hipDispLow = low.hipDispCm; m.hipHeightLow = low.hipHeightCm; m.toeLow = low.toeCm; }
       if (ev.toeOff != null) {
         const to = kinAt(Math.max(0, ev.toeOff - frameDur() * 0.7));   // last ground frame
-        if (to) { m.kneeTO = to.kneeFlex; m.hipTO = to.hipFlex; m.ankleTO = to.ankle; }
+        if (to) { m.kneeTO = to.kneeFlex; m.hipTO = to.hipFlex; m.ankleTO = to.ankle; m.trunkTO = to.trunk; m.hipDispTO = to.hipDispCm; m.hipHeightTO = to.hipHeightCm; m.toeTO = to.toeCm; }
+      }
+      if (ev.apex != null) {
+        const ap = kinAt(ev.apex);
+        if (ap) { m.kneeApex = ap.kneeFlex; m.hipApex = ap.hipFlex; m.ankleApex = ap.ankle; m.trunkApex = ap.trunk; m.hipDispApex = ap.hipDispCm; m.hipHeightApex = ap.hipHeightCm; m.toeApex = ap.toeCm; }
       }
       if (ev.landing != null) {
         let km = null, hm = null;
@@ -1604,7 +1755,7 @@
     }
 
     // ---------------------------------------------------------------------
-    // Step 4: results
+    // Step 4: results & 1s-to-end summary statistics
     // ---------------------------------------------------------------------
     function enterResults() {
       const m = getMetrics();
@@ -1635,6 +1786,7 @@
 
       updateSaveButton();
       $('btnSaveTrial').disabled = m.flightS == null;
+      renderSummaryStats();
       renderTrials();
       captureKeyFrames();
     }
@@ -1729,11 +1881,24 @@
           <td class="text-right"><button class="btn btn-ghost btn-sm" data-del="${t.id}">刪除</button></td>
         </tr>`).join('') : '<tr><td colspan="7" class="py-4 text-center text-slate-500">還沒有儲存的試跳</td></tr>';
       document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
-        if (!confirm('確定刪除這筆試跳紀錄？')) return;
+        if (b.dataset.confirming !== '1') {
+          b.dataset.confirming = '1';
+          b.textContent = '確定刪除？';
+          b.classList.add('text-rose-300', 'border-rose-500/60');
+          setTimeout(() => {
+            if (b.isConnected) {
+              b.dataset.confirming = '0';
+              b.textContent = '刪除';
+              b.classList.remove('text-rose-300', 'border-rose-500/60');
+            }
+          }, 2500);
+          return;
+        }
         S.trials = S.trials.filter(t => String(t.id) !== b.dataset.del);
         store.set('jump-trials', S.trials);
         renderTrials();
         updateSaveButton();
+        toast('已刪除試跳紀錄');
       }));
     }
     $('btnSaveTrial').addEventListener('click', saveTrial);
@@ -1749,86 +1914,296 @@
     Object.entries(ATH_FIELDS).forEach(([id, key]) => $(id).addEventListener('input', (e) => {
       S.athlete[key] = e.target.value;
       store.set('jump-athlete', S.athlete);
-      if (key === 'height' && S.track) { S.keyframes = []; buildChart(); render(); }
+      if (key === 'height' && S.track) {
+        S.keyframes = [];
+        buildChart();
+        if (S.step === 4) renderSummaryStats();
+        render();
+      }
     }));
 
     // ---------------------------------------------------------------------
-    // Chart
+    // Interactive Mobile-Friendly Chart (Touch Scrubbing, Zoom Modes, Pills)
     // ---------------------------------------------------------------------
     let chart = null;
+    const chartUI = {
+      zoom: 'focus', // 'focus' | '1s' | 'all'
+      tall: false,
+      visible: [true, true, true, true, false] // Knee, Hip, Ankle, ToeHeight, HipDisp
+    };
+
     const markerPlugin = {
       id: 'eventMarkers',
       afterDatasetsDraw(c) {
         if (!S.ev) return;
         const { ctx, chartArea: a, scales: { x } } = c;
+        if (!a || !x) return;
         ctx.save();
+        const shortTag = { dropLanding: '觸地', lowest: '↓最低', toeOff: 'T離地', apex: '★最高', landing: 'L落地', landingLowest: '緩衝' };
         eventDefs().forEach(d => {
           const t = S.ev[d.key];
           if (t == null) return;
           const px = x.getPixelForValue(relT(t));
           if (px < a.left || px > a.right) return;
           ctx.strokeStyle = d.color;
-          ctx.globalAlpha = d.main ? 0.9 : 0.45;
-          ctx.setLineDash(d.main ? [] : [3, 3]);
+          ctx.lineWidth = d.main ? 2 : 1.2;
+          ctx.globalAlpha = d.main ? 0.92 : 0.55;
+          ctx.setLineDash(d.main ? [] : [4, 3]);
           ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+
+          // Draw compact badge at top of event line
+          const lbl = shortTag[d.key] || d.name;
+          ctx.font = '700 10px "Noto Sans TC", sans-serif';
+          const tw = ctx.measureText(lbl).width + 8;
+          const bx = clamp(px - tw / 2, a.left + 1, a.right - tw - 1);
+          const by = a.top + (d.main ? 2 : 18);
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(bx, by, tw, 15);
+          ctx.strokeStyle = d.color;
+          ctx.setLineDash([]);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(bx, by, tw, 15);
+          ctx.fillStyle = d.color;
+          ctx.fillText(lbl, bx + 4, by + 11);
         });
-        const cur = x.getPixelForValue(relT(video.currentTime || 0));
+
+        // Current video frame playhead line + active dots on each visible curve
+        const curRel = relT(video.currentTime || 0);
+        const cur = x.getPixelForValue(curRel);
         if (cur >= a.left && cur <= a.right) {
-          ctx.globalAlpha = 1; ctx.setLineDash([]);
-          ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 1.5;
+          ctx.globalAlpha = 1;
+          ctx.setLineDash([]);
+          ctx.strokeStyle = '#f8fafc';
+          ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(cur, a.top); ctx.lineTo(cur, a.bottom); ctx.stroke();
+
+          // Draw playhead handle at top
+          ctx.fillStyle = '#f8fafc';
+          ctx.beginPath();
+          ctx.arc(cur, a.top + 4, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw intersecting dots on visible datasets
+          const k = S.track && S.det ? kinAt(video.currentTime || 0) : null;
+          if (k) {
+            const keys = ['kneeFlex', 'hipFlex', 'ankle', 'toeCm', 'hipDispCm'];
+            c.data.datasets.forEach((ds, idx) => {
+              if (c.isDatasetVisible(idx) && keys[idx]) {
+                const yScale = c.scales[ds.yAxisID];
+                if (!yScale) return;
+                const py = yScale.getPixelForValue(k[keys[idx]]);
+                if (py >= a.top && py <= a.bottom) {
+                  ctx.fillStyle = ds.borderColor;
+                  ctx.beginPath();
+                  ctx.arc(cur, py, 4.5, 0, Math.PI * 2);
+                  ctx.fill();
+                  ctx.strokeStyle = '#0b1120';
+                  ctx.lineWidth = 1.5;
+                  ctx.stroke();
+                }
+              }
+            });
+          }
         }
         ctx.restore();
       }
     };
 
+    function getChartXBounds(rows) {
+      if (!rows.length) return { min: undefined, max: undefined };
+      const allMin = rows[0].x;
+      const allMax = rows[rows.length - 1].x;
+      if (chartUI.zoom === 'all') return { min: allMin, max: allMax };
+      if (chartUI.zoom === '1s') {
+        const start1s = relT(1.0);
+        return { min: start1s < allMax ? Math.max(allMin, start1s) : allMin, max: allMax };
+      }
+      // 'focus': center around the jump action (squat / drop landing -> landing buffer)
+      if (S.ev && S.ev.toeOff != null) {
+        const k = slowK();
+        const tStart = S.test === 'DJ' && S.ev.dropLanding != null
+          ? S.ev.dropLanding - 0.35 * k
+          : (S.ev.lowest != null ? S.ev.lowest - 0.65 * k : S.ev.toeOff - 1.1 * k);
+        const tEnd = S.ev.landing != null
+          ? (S.ev.landingLowest != null ? S.ev.landingLowest + 0.45 * k : S.ev.landing + 0.75 * k)
+          : S.ev.toeOff + 1.0 * k;
+        const xMin = Math.max(allMin, relT(Math.max(0, tStart)));
+        const xMax = Math.min(allMax, relT(Math.min(video.duration || 1e9, tEnd)));
+        if (xMax - xMin > 0.25) return { min: xMin, max: xMax };
+      }
+      return { min: allMin, max: allMax };
+    }
+
+    function renderChartEventChips() {
+      const box = $('chartEventChips');
+      if (!box || !S.ev) return;
+      box.innerHTML = eventDefs().map(d => {
+        const t = S.ev[d.key];
+        return `<button class="btn btn-ghost btn-sm !py-1 !px-2 text-xs" data-cjump="${d.key}" ${t == null ? 'disabled' : ''} style="border-color:${d.color}55;color:${d.color}">
+          <span class="w-2 h-2 rounded-full" style="background:${d.color}"></span>${d.name}
+        </button>`;
+      }).join('');
+      box.querySelectorAll('[data-cjump]').forEach(b => b.addEventListener('click', () => {
+        const t = S.ev[b.dataset.cjump];
+        if (t != null) {
+          video.pause();
+          video.currentTime = frameTimeOf(t);
+        }
+      }));
+    }
+
     function buildChart() {
       if (!S.track || !S.det || typeof Chart === 'undefined') return;
       const rows = S.track.frames.filter(f => f.pts).map(f => ({ x: relT(f.t), k: kinAt(f.t) }));
-      const ds = (label, key, color, axis = 'yA', extra = {}) => ({
-        label, data: rows.map(r => ({ x: r.x, y: Number(r.k[key].toFixed(2)) })),
-        borderColor: color, backgroundColor: color, yAxisID: axis, pointRadius: 0, borderWidth: 2, tension: 0.25, ...extra
+      const bounds = getChartXBounds(rows);
+      const mob = isMobileUI();
+      const ds = (label, key, color, idx, axis = 'yA', extra = {}) => ({
+        label,
+        data: rows.map(r => ({ x: r.x, y: Number(r.k[key].toFixed(2)) })),
+        borderColor: color,
+        backgroundColor: color,
+        yAxisID: axis,
+        pointRadius: 0,
+        pointHitRadius: 16,
+        borderWidth: mob ? 2.4 : 2,
+        tension: 0.25,
+        hidden: !chartUI.visible[idx],
+        ...extra
       });
+
+      const showHeightAxis = chartUI.visible[3] || chartUI.visible[4];
       const cfg = {
         type: 'line',
         data: {
           datasets: [
-            ds('膝屈曲 (°)', 'kneeFlex', '#22d3ee'),
-            ds('髖屈曲 (°)', 'hipFlex', '#fbbf24'),
-            ds('踝 (°，+背屈 −蹠屈)', 'ankle', '#fb7185', 'yA', { hidden: true }),
-            ds('腳尖離地高度 (cm)', 'toeCm', '#34d399', 'yH', { fill: true, backgroundColor: 'rgba(52,211,153,.12)' })
+            ds('膝屈曲 (°)', 'kneeFlex', '#22d3ee', 0, 'yA'),
+            ds('髖屈曲 (°)', 'hipFlex', '#fbbf24', 1, 'yA'),
+            ds('踝 (°，+背屈 −蹠屈)', 'ankle', '#fb7185', 2, 'yA'),
+            ds('腳尖離地高度 (cm)', 'toeCm', '#34d399', 3, 'yH', { fill: true, backgroundColor: 'rgba(52,211,153,.12)' }),
+            ds('髖部垂直位移 (cm)', 'hipDispCm', '#a78bfa', 4, 'yH', { borderDash: [4, 3] })
           ]
         },
         options: {
-          animation: false, responsive: true, maintainAspectRatio: false,
+          animation: false,
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 20, right: 4, left: 0, bottom: 0 } },
           interaction: { mode: 'nearest', axis: 'x', intersect: false },
           scales: {
-            x: { type: 'linear', title: { display: true, text: S.ev && S.ev.toeOff != null ? '距離地時間（實際秒，0 = 離地）' : '時間（實際秒）', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(51,65,85,.35)' } },
-            yA: { position: 'left', title: { display: true, text: '角度 (°)', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(51,65,85,.35)' } },
-            yH: { position: 'right', min: 0, title: { display: true, text: '腳尖高度 (cm)', color: '#34d399' }, ticks: { color: '#34d399' }, grid: { drawOnChartArea: false } }
+            x: {
+              type: 'linear',
+              min: bounds.min,
+              max: bounds.max,
+              title: { display: !mob, text: S.ev && S.ev.toeOff != null ? '距離地時間（實際秒，0 = 離地）' : '時間（實際秒）', color: '#94a3b8' },
+              ticks: { color: '#94a3b8', maxTicksLimit: mob ? 6 : 11, font: { size: mob ? 10 : 11 } },
+              grid: { color: 'rgba(51,65,85,.35)' }
+            },
+            yA: {
+              position: 'left',
+              title: { display: !mob, text: '角度 (°)', color: '#94a3b8' },
+              ticks: { color: '#94a3b8', maxTicksLimit: mob ? 6 : 8, font: { size: mob ? 10 : 11 }, callback: (v) => `${v}°` },
+              grid: { color: 'rgba(51,65,85,.35)' }
+            },
+            yH: {
+              position: 'right',
+              display: showHeightAxis,
+              min: chartUI.visible[4] ? undefined : 0,
+              title: { display: !mob, text: '高度 / 位移 (cm)', color: '#34d399' },
+              ticks: { color: '#34d399', maxTicksLimit: mob ? 6 : 8, font: { size: mob ? 10 : 11 }, callback: (v) => `${v}cm` },
+              grid: { drawOnChartArea: false }
+            }
           },
           plugins: {
-            legend: { labels: { color: '#cbd5e1', boxWidth: 12 } },
-            tooltip: { callbacks: { title: (items) => `${signed(items[0].parsed.x, 3)} s` } }
-          },
-          onClick: (e, _el, c) => {
-            const x = c.scales.x.getValueForPixel(e.x);
-            if (x == null || S.analyzing) return;
-            video.pause();
-            video.currentTime = frameTimeOf(clamp(fromRel(x), 0, video.duration - 0.001));
+            legend: { display: false },
+            tooltip: {
+              enabled: !mob,
+              callbacks: { title: (items) => `${signed(items[0].parsed.x, 3)} s` }
+            }
           }
         },
         plugins: [markerPlugin]
       };
       if (chart) chart.destroy();
       chart = new Chart($('chart'), cfg);
+      renderChartEventChips();
     }
 
+    // Touch / pointer drag scrubbing directly on the chart canvas
+    (function setupChartInteractions() {
+      const cWrap = $('chartWrap');
+      let scrubbing = false;
+
+      function seekFromPointer(clientX) {
+        if (!chart || !S.track || S.analyzing) return;
+        const rect = $('chart').getBoundingClientRect();
+        const a = chart.chartArea;
+        if (!a) return;
+        const px = clamp(clientX - rect.left, a.left, a.right);
+        const relSec = chart.scales.x.getValueForPixel(px);
+        if (relSec == null || !isFinite(relSec)) return;
+        video.pause();
+        const targetT = frameTimeOf(clamp(fromRel(relSec), 0, (video.duration || 1) - 0.001));
+        if (Math.abs(video.currentTime - targetT) > 1e-4) {
+          video.currentTime = targetT;
+        }
+      }
+
+      cWrap.addEventListener('pointerdown', (e) => {
+        if (!chart || S.analyzing) return;
+        scrubbing = true;
+        try { cWrap.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        seekFromPointer(e.clientX);
+      });
+      cWrap.addEventListener('pointermove', (e) => {
+        if (!scrubbing) return;
+        seekFromPointer(e.clientX);
+      });
+      const stopScrub = () => { scrubbing = false; };
+      cWrap.addEventListener('pointerup', stopScrub);
+      cWrap.addEventListener('pointercancel', stopScrub);
+
+      // Series toggle pills
+      document.querySelectorAll('#chartSeriesPills [data-series]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.dataset.series);
+          chartUI.visible[idx] = !chartUI.visible[idx];
+          btn.classList.toggle('on', chartUI.visible[idx]);
+          buildChart();
+        });
+      });
+
+      // Zoom range mode buttons
+      document.querySelectorAll('#chartZoomGroup [data-czoom]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          chartUI.zoom = btn.dataset.czoom;
+          document.querySelectorAll('#chartZoomGroup [data-czoom]').forEach(b => b.classList.toggle('active', b === btn));
+          buildChart();
+        });
+      });
+
+      // Toggle chart height for easier inspection on phones
+      $('btnChartTall').addEventListener('click', () => {
+        chartUI.tall = !chartUI.tall;
+        $('btnChartTall').classList.toggle('active', chartUI.tall);
+        $('btnChartTall').textContent = chartUI.tall ? '↕ 標準高度' : '↕ 加高';
+        cWrap.className = chartUI.tall ? 'relative h-96 sm:h-[28rem] select-none' : 'relative h-72 sm:h-80 select-none';
+        if (chart) chart.resize();
+      });
+
+      // Quick frame step & play buttons below chart
+      $('btnChartPrev5').addEventListener('click', () => stepFrames(-5));
+      $('btnChartPrev1').addEventListener('click', () => stepFrames(-1));
+      $('btnChartPlay').addEventListener('click', togglePlay);
+      $('btnChartNext1').addEventListener('click', () => stepFrames(1));
+      $('btnChartNext5').addEventListener('click', () => stepFrames(5));
+    })();
+
     // ---------------------------------------------------------------------
-    // CSV export
+    // 1-second-to-end data extraction, summary statistics & CSV export
     // ---------------------------------------------------------------------
     function csvText(rows) {
-      return '﻿' + rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      return '\uFEFF' + rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
     }
     function download(name, text, mime = 'text/csv;charset=utf-8') {
       const url = URL.createObjectURL(new Blob([text], { type: mime }));
@@ -1840,32 +2215,255 @@
     const fileStamp = () => (S.athlete.date || localDate()).replace(/-/g, '');
     const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30);
 
-    function exportFramesCsv() {
-      if (!S.track) return;
+    function calcStats(vals) {
+      const v = vals.filter(x => x != null && isFinite(x));
+      if (!v.length) return { count: 0, mean: null, sd: null, min: null, max: null, rom: null };
+      const n = v.length;
+      const mean = v.reduce((a, b) => a + b, 0) / n;
+      const variance = n > 1 ? v.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (n - 1) : 0;
+      const sd = Math.sqrt(variance);
+      const min = Math.min(...v);
+      const max = Math.max(...v);
+      return { count: n, mean, sd, min, max, rom: max - min };
+    }
+
+    // Select frames starting from 1.0 second to the end of the video (with safe fallback if clip < 1.0 s)
+    function getFramesFrom1s() {
+      if (!S.track) return { records: [], startSec: 1.0, endSec: 1.0, fallback: false };
+      const fd = frameDur();
+      const k = slowK();
+      const allValid = S.track.frames.filter(f => f.pts);
+      const filtered = allValid.filter(f => f.fi * fd >= 1.0 - 1e-6);
+      const chosen = filtered.length > 0 ? filtered : allValid;
+      const fallback = filtered.length === 0;
+      const records = chosen.map(f => {
+        const kin = kinAt(f.t);
+        const videoSec = f.fi * fd;
+        const realSec = videoSec / k;
+        return { f, kin, videoSec, realSec };
+      });
+      const startSec = records.length ? records[0].videoSec : 1.0;
+      const endSec = records.length ? records[records.length - 1].videoSec : startSec;
+      return { records, startSec, endSec, fallback };
+    }
+
+    function buildSummaryStatsData() {
+      const { records, startSec, endSec, fallback } = getFramesFrom1s();
+      const m = getMetrics();
+      const delta = (a, b) => (a != null && b != null && isFinite(a) && isFinite(b) ? a - b : null);
+
+      const items = [
+        {
+          label: '腳尖離地高度 (cm)',
+          unit: 'cm',
+          digits: 2,
+          stats: calcStats(records.map(r => r.kin.toeCm)),
+          lowVal: m.toeLow ?? 0,
+          toVal: m.toeTO ?? 0,
+          takeoffDelta: delta(m.toeApex ?? null, m.toeLow ?? 0),
+          apexVal: m.toeApex ?? null
+        },
+        {
+          label: '起跳過程髖部垂直位移 (cm)',
+          unit: 'cm',
+          digits: 2,
+          stats: calcStats(records.map(r => r.kin.hipDispCm)),
+          lowVal: m.hipDispLow ?? null,
+          toVal: m.hipDispTO ?? null,
+          takeoffDelta: delta(m.hipDispTO, m.hipDispLow),
+          apexVal: m.hipDispApex ?? null
+        },
+        {
+          label: '起跳過程髖部離地高度 (cm)',
+          unit: 'cm',
+          digits: 2,
+          stats: calcStats(records.map(r => r.kin.hipHeightCm)),
+          lowVal: m.hipHeightLow ?? null,
+          toVal: m.hipHeightTO ?? null,
+          takeoffDelta: delta(m.hipHeightTO, m.hipHeightLow),
+          apexVal: m.hipHeightApex ?? null
+        },
+        {
+          label: '髖關節屈曲角度 (°)',
+          unit: '°',
+          digits: 1,
+          stats: calcStats(records.map(r => r.kin.hipFlex)),
+          lowVal: m.hipLow ?? null,
+          toVal: m.hipTO ?? null,
+          takeoffDelta: delta(m.hipTO, m.hipLow),
+          apexVal: m.hipApex ?? null
+        },
+        {
+          label: '膝關節屈曲角度 (°)',
+          unit: '°',
+          digits: 1,
+          stats: calcStats(records.map(r => r.kin.kneeFlex)),
+          lowVal: m.kneeLow ?? null,
+          toVal: m.kneeTO ?? null,
+          takeoffDelta: delta(m.kneeTO, m.kneeLow),
+          apexVal: m.kneeApex ?? null
+        },
+        {
+          label: '踝關節角度 (°，+背屈/−蹠屈)',
+          unit: '°',
+          digits: 1,
+          stats: calcStats(records.map(r => r.kin.ankle)),
+          lowVal: m.ankleLow ?? null,
+          toVal: m.ankleTO ?? null,
+          takeoffDelta: delta(m.ankleTO, m.ankleLow),
+          apexVal: m.ankleApex ?? null
+        }
+      ];
+
+      return { records, startSec, endSec, fallback, m, items };
+    }
+
+    function renderSummaryStats() {
+      if (!S.track || !S.det) return;
+      const { records, startSec, endSec, fallback, items } = buildSummaryStatsData();
+      $('statsRangeBadge').textContent = fallback
+        ? `（影片小於 1 秒，統計全程 ${startSec.toFixed(3)} – ${endSec.toFixed(3)} s，共 ${records.length} 格）`
+        : `（紀錄區間：${startSec.toFixed(3)} – ${endSec.toFixed(3)} s，共 ${records.length} 格）`;
+
+      $('statsBody').innerHTML = items.map(it => {
+        const s = it.stats;
+        const d = it.digits;
+        return `<tr class="border-b border-slate-800/70">
+          <td class="py-2 pr-2 font-bold text-slate-200">${it.label}</td>
+          <td class="pr-2 text-right mono text-emerald-300">${fmt(s.mean, d)}</td>
+          <td class="pr-2 text-right mono text-slate-300">${fmt(s.sd, d)}</td>
+          <td class="pr-2 text-right mono text-slate-400">${fmt(s.min, d)}</td>
+          <td class="pr-2 text-right mono text-slate-200">${fmt(s.max, d)}</td>
+          <td class="pr-2 text-right mono font-bold text-sky-300">${fmt(s.rom, d)}</td>
+          <td class="pr-2 text-right mono text-amber-200">${fmt(it.lowVal, d)}</td>
+          <td class="pr-2 text-right mono text-emerald-200">${fmt(it.toVal, d)}</td>
+          <td class="text-right mono font-bold text-rose-300">${signed(it.takeoffDelta, d)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function buildFramesCsvPayload() {
+      if (!S.track) return null;
       const r2 = (v, d = 2) => (v == null || !isFinite(v) ? '' : Number(v).toFixed(d));
+      const { records, startSec, endSec, fallback, m, items } = buildSummaryStatsData();
+      const hasT = S.ev && S.ev.toeOff != null;
+
+      // 1. Frame-by-frame table from 1.0 second to the end
       const rows = [[
-        'Frame_No', 'Video_Time_s', 'Real_Time_s', 'Time_from_ToeOff_s', 'Phase', 'Contact',
-        'Toe_Height_cm', 'Hip_Vertical_Disp_cm',
-        'Hip_Flexion_deg', 'Knee_Flexion_deg', 'Ankle_deg(+背屈/-蹠屈)', 'Trunk_Lean_deg',
+        'Frame_No (格數)',
+        'Video_Time_s (影片時間_1秒起)',
+        'Real_Time_s (實際時間_s)',
+        'Time_from_ToeOff_s (距離地時間_s)',
+        'Phase (動作階段)',
+        'Contact (觸地/騰空狀態)',
+        'Toe_Height_cm (腳尖離地高度_cm)',
+        'Hip_Vertical_Disp_cm (起跳過程髖部垂直位移_cm)',
+        'Hip_Height_cm (起跳過程髖部離地高度_cm)',
+        'Hip_Flexion_deg (髖關節屈曲角度_deg)',
+        'Knee_Flexion_deg (膝關節屈曲角度_deg)',
+        'Ankle_deg (踝關節角度_deg_+背屈/-蹠屈)',
+        'Trunk_Lean_deg (軀幹前傾角度_deg)',
         'Shoulder_X', 'Shoulder_Y', 'Hip_X', 'Hip_Y', 'Knee_X', 'Knee_Y', 'Ankle_X', 'Ankle_Y', 'Heel_X', 'Heel_Y', 'Toe_X', 'Toe_Y'
       ]];
-      const hasT = S.ev && S.ev.toeOff != null;
-      S.track.frames.forEach(f => {
-        if (!f.pts) return;
-        const k = kinAt(f.t);
-        const p = k.pts;
+
+      records.forEach(({ f, kin, videoSec, realSec }) => {
+        const p = kin.pts;
         rows.push([
-          f.fi, r2(f.fi * frameDur(), 4), r2(f.fi * frameDur() / slowK(), 4), hasT ? r2(relT(f.t), 4) : '', k.phase.replace('★ ', ''), k.air ? '騰空' : '觸地',
-          r2(k.toeCm), r2(k.hipDispCm), r2(k.hipFlex, 1), r2(k.kneeFlex, 1), r2(k.ankle, 1), r2(k.trunk, 1),
+          f.fi,
+          r2(videoSec, 4),
+          r2(realSec, 4),
+          hasT ? r2(relT(f.t), 4) : '',
+          kin.phase.replace('★ ', ''),
+          kin.air ? '騰空' : '觸地',
+          r2(kin.toeCm, 2),
+          r2(kin.hipDispCm, 2),
+          r2(kin.hipHeightCm, 2),
+          r2(kin.hipFlex, 1),
+          r2(kin.kneeFlex, 1),
+          r2(kin.ankle, 1),
+          r2(kin.trunk, 1),
           ...['shoulder', 'hip', 'knee', 'ankle', 'heel', 'toe'].flatMap(nm => [r2(p[nm].x, 1), r2(p[nm].y, 1)])
         ]);
       });
-      download(`JUMP_${S.test}_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}_逐格.csv`, csvText(rows));
-      toast('已匯出逐格 CSV（Time_from_ToeOff_s：離地 = 0）');
+
+      // 2. Comprehensive summary statistics appended at the end of the CSV
+      rows.push([]);
+      rows.push([
+        `=== 綜合統計數據（紀錄區間：${r2(startSec, 3)} s 至 ${r2(endSec, 3)} s，共 ${records.length} 格） ===`
+      ]);
+      rows.push([
+        '統計項目 (Metric)',
+        '平均值 (Mean)',
+        '標準差 (SD)',
+        '最小值 (Min)',
+        '最大值 (Max)',
+        '活動範圍/全距 (ROM = Max - Min)',
+        '下蹲/觸地最低點數值',
+        '離地瞬間 (T) 數值',
+        '起跳蹬伸變化量 (離地T - 最低點)',
+        '騰空最高點 (Apex) 數值'
+      ]);
+
+      items.forEach(it => {
+        const s = it.stats;
+        const d = it.digits;
+        rows.push([
+          it.label,
+          r2(s.mean, d),
+          r2(s.sd, d),
+          r2(s.min, d),
+          r2(s.max, d),
+          r2(s.rom, d),
+          r2(it.lowVal, d),
+          r2(it.toVal, d),
+          r2(it.takeoffDelta, d),
+          r2(it.apexVal, d)
+        ]);
+      });
+
+      // 3. Overall jump performance & key event summary block
+      const ev = S.ev || {};
+      rows.push([]);
+      rows.push(['=== 跳躍表現與關鍵時刻綜合摘要 ===']);
+      rows.push(['項目', '數值', '單位 / 備註']);
+      rows.push(['測驗種類', TESTS[S.test].name, TESTS[S.test].en]);
+      rows.push(['受測者姓名', S.athlete.name || '未填寫', `單位：${S.athlete.unit || '未填寫'}｜身高：${S.athlete.height || '預設'} cm`]);
+      rows.push(['分析紀錄時間範圍', `${r2(startSec, 3)} ~ ${r2(endSec, 3)}`, `s（共 ${records.length} 格，拍攝幀率 ${S.fps} FPS${S.slowmo ? ' 慢動作' : ''}）`]);
+      rows.push(['跳躍高度（滯空時間法）', r2(m.heightCm, 2), 'cm（g × 滯空時間² ÷ 8）']);
+      rows.push(['滯空時間 (Flight Time)', r2(m.flightS, 4), 's']);
+      rows.push(['最大腳尖離地高度', r2(items[0].stats.max, 2), 'cm']);
+      rows.push(['最大起跳髖部垂直位移', r2(items[1].stats.max, 2), 'cm（相對於站立基準）']);
+      rows.push(['最大下蹲深度（髖部下沉）', r2(items[1].stats.min, 2), 'cm（相對於站立基準）']);
+      rows.push(['下蹲最低點時間', ev.lowest != null ? r2(frameStart(ev.lowest), 4) : '', 's']);
+      rows.push(['離地瞬間 (T) 時間', ev.toeOff != null ? r2(frameStart(ev.toeOff), 4) : '', 's']);
+      rows.push(['騰空最高點 (Apex) 時間', ev.apex != null ? r2(frameStart(ev.apex), 4) : '', 's']);
+      rows.push(['落地瞬間 (L) 時間', ev.landing != null ? r2(frameStart(ev.landing), 4) : '', 's']);
+      rows.push(['落地緩衝最大膝屈曲角度', r2(m.kneeLand, 1), 'deg (°)']);
+      rows.push(['落地緩衝最大髖屈曲角度', r2(m.hipLand, 1), 'deg (°)']);
+      if (S.test === 'DJ') {
+        rows.push(['DJ 觸地時間 (Contact Time)', r2(m.contactMs, 1), 'ms']);
+        rows.push(['DJ 反應肌力指數 (RSI)', r2(m.rsi, 2), '跳高(m) ÷ 觸地時間(s)']);
+      }
+      if (S.test === 'SJ') {
+        rows.push(['SJ 靜蹲時間', r2(m.sjHoldS, 2), 's']);
+        rows.push(['SJ 起跳前下沉量', r2(m.sjDipCm, 2), `cm（${m.sjPass ? 'PASS 合格' : 'FAIL 有反向動作'}）`]);
+      }
+
+      const fileName = `JUMP_${S.test}_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}_1秒起逐格與統計.csv`;
+      return { fileName, text: csvText(rows), startSec, endSec, fallback, count: records.length };
     }
 
-    function exportTrialsCsv() {
-      if (!S.trials.length) { toast('還沒有儲存的試跳'); return; }
+    function exportFramesCsv() {
+      const payload = buildFramesCsvPayload();
+      if (!payload) return;
+      download(payload.fileName, payload.text);
+      toast(payload.fallback
+        ? '已匯出 CSV（影片短於 1 秒，已匯出全程逐格與底部綜合統計數據）'
+        : `已匯出 CSV（${payload.startSec.toFixed(2)}s 至結束，含起跳高度、三關節角度與底部綜合統計數據）`);
+    }
+
+    function buildTrialsCsvPayload() {
+      if (!S.trials.length) return null;
       const best = bestIds();
       const r = (v, d = 1) => (v == null || !isFinite(v) ? '' : Number(v).toFixed(d));
       const rows = [['姓名', '單位', '測驗', '儲存時間', '影片', '滯空時間_s', '跳躍高度_cm', '最佳', 'DJ觸地時間_ms', 'DJ_RSI', 'SJ靜止起跳', 'SJ起跳前下沉_cm', '下蹲最低膝屈曲_deg', '下蹲最低髖屈曲_deg', '離地膝屈曲_deg', '落地最大膝屈曲_deg', '軀幹前傾_deg']];
@@ -1873,9 +2471,333 @@
         S.athlete.name || '', S.athlete.unit || '', t.test, t.savedAt, t.video, r(t.flightS, 3), r(t.heightCm), best.has(t.id) ? '★' : '',
         r(t.contactMs, 0), r(t.rsi, 2), t.sjPass == null ? '' : t.sjPass ? 'PASS' : 'FAIL', r(t.sjDipCm), r(t.kneeLow), r(t.hipLow), r(t.kneeTO), r(t.kneeLand), r(t.trunkLow)
       ]));
-      download(`JUMP_試跳紀錄_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}.csv`, csvText(rows));
+
+      const stFlight = calcStats(S.trials.map(t => t.flightS));
+      const stHeight = calcStats(S.trials.map(t => t.heightCm));
+      const stKneeLow = calcStats(S.trials.map(t => t.kneeLow));
+      const stHipLow = calcStats(S.trials.map(t => t.hipLow));
+      const stKneeTO = calcStats(S.trials.map(t => t.kneeTO));
+      const stKneeLand = calcStats(S.trials.map(t => t.kneeLand));
+      rows.push([]);
+      rows.push(['=== 已儲存試跳綜合統計數據 ===']);
+      rows.push(['統計指標', '滯空時間_s', '跳躍高度_cm', '下蹲最低膝屈曲_deg', '下蹲最低髖屈曲_deg', '離地膝屈曲_deg', '落地最大膝屈曲_deg']);
+      rows.push(['平均值 (Mean)', r(stFlight.mean, 3), r(stHeight.mean, 1), r(stKneeLow.mean, 1), r(stHipLow.mean, 1), r(stKneeTO.mean, 1), r(stKneeLand.mean, 1)]);
+      rows.push(['標準差 (SD)', r(stFlight.sd, 3), r(stHeight.sd, 1), r(stKneeLow.sd, 1), r(stHipLow.sd, 1), r(stKneeTO.sd, 1), r(stKneeLand.sd, 1)]);
+      rows.push(['最小值 (Min)', r(stFlight.min, 3), r(stHeight.min, 1), r(stKneeLow.min, 1), r(stHipLow.min, 1), r(stKneeTO.min, 1), r(stKneeLand.min, 1)]);
+      rows.push(['最大值 (Max)', r(stFlight.max, 3), r(stHeight.max, 1), r(stKneeLow.max, 1), r(stHipLow.max, 1), r(stKneeTO.max, 1), r(stKneeLand.max, 1)]);
+
+      const fileName = `JUMP_試跳紀錄_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}.csv`;
+      return { fileName, text: csvText(rows) };
     }
+
+    function exportTrialsCsv() {
+      const payload = buildTrialsCsvPayload();
+      if (!payload) { toast('還沒有儲存的試跳'); return; }
+      download(payload.fileName, payload.text);
+    }
+
+    // ---------------------------------------------------------------------
+    // LINE Export & Share (Files, Visual Report Card PNG & Summary Text)
+    // ---------------------------------------------------------------------
+    function copyTextSafe(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
+      }
+      return Promise.resolve(fallbackCopy(text));
+    }
+
+    function fallbackCopy(text) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function buildLineSummaryText(mode = 'current') {
+      const a = S.athlete;
+      const header = `📊【JUMP 跳躍分析報告】\n受測者：${a.name || '未填寫'}${a.unit ? `（${a.unit}）` : ''}｜日期：${a.date || localDate()}`;
+      if (mode === 'trials' && S.trials.length) {
+        const best = bestIds();
+        const lines = [header, `📋 已儲存試跳紀錄（共 ${S.trials.length} 筆）：`];
+        S.trials.forEach((t, idx) => {
+          lines.push(`${best.has(t.id) ? '★' : '・'} #${idx + 1} ${t.test}：跳高 ${fmt(t.heightCm)} cm｜滯空 ${fmt(t.flightS, 3)} s｜下蹲膝屈曲 ${fmt(t.kneeLow, 0)}°`);
+        });
+        return lines.join('\n');
+      }
+      if (!S.track) return header;
+      const { startSec, endSec, records, m, items } = buildSummaryStatsData();
+      const lines = [
+        header,
+        `測驗項目：${TESTS[S.test].name}（${S.fps} FPS${S.slowmo ? ' 慢動作' : ''}）`,
+        `🏆 跳躍高度：${fmt(m.heightCm)} cm｜滯空時間：${fmt(m.flightS, 3)} s`
+      ];
+      if (S.test === 'DJ') lines.push(`⚡ 觸地時間：${fmt(m.contactMs, 0)} ms｜RSI：${fmt(m.rsi, 2)}`);
+      if (S.test === 'SJ') lines.push(`✅ 靜止起跳檢查：${m.sjPass ? 'PASS' : 'FAIL'}（靜蹲 ${fmt(m.sjHoldS)} s，下沉 ${fmt(m.sjDipCm)} cm）`);
+      lines.push(`📐 關鍵時刻角度（髖／膝／踝）：`);
+      lines.push(`・下蹲最低點：${fmt(m.hipLow, 1)}° ／ ${fmt(m.kneeLow, 1)}° ／ ${signed(m.ankleLow, 1)}°`);
+      lines.push(`・離地瞬間(T)：${fmt(m.hipTO, 1)}° ／ ${fmt(m.kneeTO, 1)}° ／ ${signed(m.ankleTO, 1)}°`);
+      lines.push(`・落地緩衝最大：髖 ${fmt(m.hipLand, 1)}° ／ 膝 ${fmt(m.kneeLand, 1)}°`);
+      lines.push(`📈 1秒至結束綜合統計（${startSec.toFixed(2)}–${endSec.toFixed(2)}s，共 ${records.length} 格）：`);
+      items.forEach(it => {
+        const s = it.stats;
+        const d = it.digits;
+        lines.push(`・${it.label}：平均 ${fmt(s.mean, d)}±${fmt(s.sd, d)}｜範圍 ${fmt(s.min, d)}~${fmt(s.max, d)} (ROM ${fmt(s.rom, d)})｜起跳變化 ${signed(it.takeoffDelta, d)}`);
+      });
+      return lines.join('\n');
+    }
+
+    async function buildReportCardBlob() {
+      if (!S.track) return null;
+      if (!S.keyframes.length) await captureKeyFrames();
+      const { startSec, endSec, records, m, items } = buildSummaryStatsData();
+      const a = S.athlete;
+      const W = 1080, H = 1360;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+
+      // Background
+      g.fillStyle = '#0b1120';
+      g.fillRect(0, 0, W, H);
+
+      // Header bar
+      g.fillStyle = '#111827';
+      g.fillRect(40, 36, W - 80, 115);
+      g.fillStyle = '#10b981';
+      g.fillRect(40, 36, 10, 115);
+      g.fillStyle = '#f8fafc';
+      g.font = '900 34px "Noto Sans TC", sans-serif';
+      g.fillText(`JUMP 垂直跳躍分析報告 — ${TESTS[S.test].name}`, 72, 86);
+      g.fillStyle = '#94a3b8';
+      g.font = '500 20px "Noto Sans TC", sans-serif';
+      g.fillText(`受測者：${a.name || '未填寫'} ｜ 單位：${a.unit || '—'} ｜ 身高：${a.height || '預設'} cm ｜ 日期：${a.date || localDate()} ｜ ${S.fps} FPS`, 72, 126);
+
+      // Big KPI boxes
+      const kpis = [
+        ['跳躍高度 (滯空時間法)', `${fmt(m.heightCm)} cm`, '#34d399'],
+        ['滯空時間 (Flight Time)', `${fmt(m.flightS, 3)} s`, '#38bdf8'],
+        ['下蹲最低 膝 / 髖屈曲', `${fmt(m.kneeLow, 0)}° / ${fmt(m.hipLow, 0)}°`, '#fbbf24'],
+        ['離地瞬間 膝 / 踝角度', `${fmt(m.kneeTO, 0)}° / ${signed(m.ankleTO, 0)}°`, '#fb7185']
+      ];
+      const kw = (W - 80 - 36) / 4;
+      kpis.forEach(([label, val, col], idx) => {
+        const x = 40 + idx * (kw + 12), y = 172;
+        g.fillStyle = '#111827';
+        g.fillRect(x, y, kw, 110);
+        g.strokeStyle = '#1f2937';
+        g.strokeRect(x, y, kw, 110);
+        g.fillStyle = '#94a3b8';
+        g.font = '700 17px "Noto Sans TC", sans-serif';
+        g.fillText(label, x + 18, y + 36);
+        g.fillStyle = col;
+        g.font = '800 32px "JetBrains Mono", monospace';
+        g.fillText(val, x + 18, y + 84);
+      });
+
+      // Keyframe images row
+      let yCur = 306;
+      if (S.keyframes.length) {
+        const kfw = (W - 80 - 24) / 3;
+        const kfh = 270;
+        for (let i = 0; i < Math.min(3, S.keyframes.length); i++) {
+          const kf = S.keyframes[i];
+          const x = 40 + i * (kfw + 12);
+          g.fillStyle = '#111827';
+          g.fillRect(x, yCur, kfw, kfh);
+          try {
+            const img = new Image();
+            await new Promise((res) => { img.onload = res; img.onerror = res; img.src = kf.img; });
+            const scale = Math.min(kfw / (img.width || 1), (kfh - 58) / (img.height || 1));
+            const dw = (img.width || 1) * scale, dh = (img.height || 1) * scale;
+            g.drawImage(img, x + (kfw - dw) / 2, yCur + 6, dw, dh);
+          } catch (e) { /* ignore image error */ }
+          g.fillStyle = '#f8fafc';
+          g.font = '700 18px "Noto Sans TC", sans-serif';
+          g.fillText(kf.label, x + 14, yCur + kfh - 30);
+          g.fillStyle = '#94a3b8';
+          g.font = '500 14px "JetBrains Mono", monospace';
+          g.fillText(`${signed(relT(kf.t), 3)}s | 髖${fmt(kf.kin.hipFlex, 0)}° 膝${fmt(kf.kin.kneeFlex, 0)}° 踝${signed(kf.kin.ankle, 0)}°`, x + 14, yCur + kfh - 10);
+        }
+        yCur += kfh + 26;
+      }
+
+      // Summary statistics table (1.0s to end)
+      g.fillStyle = '#111827';
+      g.fillRect(40, yCur, W - 80, 460);
+      g.fillStyle = '#10b981';
+      g.font = '800 22px "Noto Sans TC", sans-serif';
+      g.fillText(`📈 起跳過程高度與三關節活動角度綜合統計（${startSec.toFixed(2)} s – ${endSec.toFixed(2)} s，共 ${records.length} 格）`, 60, yCur + 40);
+
+      const cols = ['統計項目', '平均 Mean', '標準差 SD', '最小 Min', '最大 Max', '活動度 ROM', '下蹲最低', '離地 (T)', '起跳變化'];
+      const colX = [60, 370, 470, 565, 655, 755, 855, 935, 1015];
+      const thY = yCur + 82;
+      g.fillStyle = '#94a3b8';
+      g.font = '700 15px "Noto Sans TC", sans-serif';
+      cols.forEach((t, idx) => g.fillText(t, colX[idx] - (idx > 0 ? 35 : 0), thY));
+
+      g.strokeStyle = '#1f2937';
+      g.beginPath(); g.moveTo(56, thY + 12); g.lineTo(W - 56, thY + 12); g.stroke();
+
+      items.forEach((it, rIdx) => {
+        const ry = thY + 52 + rIdx * 54;
+        const s = it.stats, d = it.digits;
+        g.fillStyle = '#e2e8f0';
+        g.font = '700 17px "Noto Sans TC", sans-serif';
+        g.fillText(it.label, colX[0], ry);
+
+        g.font = '700 17px "JetBrains Mono", monospace';
+        const vals = [
+          [fmt(s.mean, d), '#34d399'],
+          [fmt(s.sd, d), '#cbd5e1'],
+          [fmt(s.min, d), '#94a3b8'],
+          [fmt(s.max, d), '#f8fafc'],
+          [fmt(s.rom, d), '#38bdf8'],
+          [fmt(it.lowVal, d), '#fde047'],
+          [fmt(it.toVal, d), '#a7f3d0'],
+          [signed(it.takeoffDelta, d), '#fb7185']
+        ];
+        vals.forEach(([v, col], cIdx) => {
+          g.fillStyle = col;
+          g.fillText(v, colX[cIdx + 1] - 30, ry);
+        });
+      });
+
+      // Footer note
+      g.fillStyle = '#64748b';
+      g.font = '500 15px "Noto Sans TC", sans-serif';
+      g.fillText('JUMP 跳躍分析系統｜跳躍高度 = g × 滯空時間² ÷ 8｜單鏡頭 2D AI 外骨骼關節角度與起跳高度分析', 40, H - 28);
+
+      return new Promise(resolve => c.toBlob(blob => resolve(blob), 'image/png'));
+    }
+
+    async function shareFileOrFallbackToLine(file, summaryText, downloadLabel) {
+      // 1. Try Web Share API with file attachment first (native mobile/tablet share to LINE app)
+      if (navigator.canShare && navigator.share) {
+        try {
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: file.name,
+              text: summaryText
+            });
+            toast(`已喚起分享選單，請選擇 LINE 傳送「${file.name}」`);
+            return;
+          }
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+        }
+      }
+
+      // 2. Desktop / iframe fallback: download the file + copy summary text + open LINE share window
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+      await copyTextSafe(summaryText);
+      const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(summaryText)}`;
+      window.open(lineUrl, '_blank', 'noopener,noreferrer');
+      toast(`已下載「${downloadLabel}」並開啟 LINE！可直接將下載的檔案拖曳進 LINE 對話視窗傳送`);
+    }
+
+    function openLineModal(mode = 'current') {
+      if (mode === 'current' && !S.track) {
+        toast('請先匯入影片並完成 AI 分析');
+        return;
+      }
+      if (mode === 'trials' && !S.trials.length) {
+        toast('目前還沒有已儲存的試跳紀錄');
+        return;
+      }
+      $('lineMsgPreview').value = buildLineSummaryText(mode);
+      $('btnLineSendCsv').disabled = !S.track;
+      $('btnLineSendImg').disabled = !S.track;
+      $('btnLineSendTrialsCsv').disabled = !S.trials.length;
+      $('lineModal').classList.remove('hidden');
+    }
+
+    $('btnLineShare').addEventListener('click', () => openLineModal('current'));
+    $('btnLineShareStats').addEventListener('click', () => openLineModal('current'));
+    $('btnLineShareTrials').addEventListener('click', () => openLineModal('trials'));
+    $('btnLineClose').addEventListener('click', () => $('lineModal').classList.add('hidden'));
+    $('lineModal').addEventListener('click', (e) => { if (e.target.id === 'lineModal') $('lineModal').classList.add('hidden'); });
+
+    $('btnLineCopyText').addEventListener('click', async () => {
+      const ok = await copyTextSafe($('lineMsgPreview').value);
+      toast(ok ? '已複製 LINE 統計摘要文字！可直接貼上 LINE' : '請手動全選複製文字');
+    });
+
+    $('btnLineSendText').addEventListener('click', async () => {
+      const text = $('lineMsgPreview').value.trim() || buildLineSummaryText('current');
+      await copyTextSafe(text);
+      const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+      window.open(lineUrl, '_blank', 'noopener,noreferrer');
+      toast('已複製摘要並開啟 LINE 分享視窗！');
+    });
+
+    $('btnLineSendCsv').addEventListener('click', async () => {
+      const payload = buildFramesCsvPayload();
+      if (!payload) { toast('請先完成影片分析'); return; }
+      const text = $('lineMsgPreview').value.trim() || buildLineSummaryText('current');
+      const file = new File([payload.text], payload.fileName, { type: 'text/csv;charset=utf-8' });
+      await shareFileOrFallbackToLine(file, text, payload.fileName);
+    });
+
+    $('btnLineSendTrialsCsv').addEventListener('click', async () => {
+      const payload = buildTrialsCsvPayload();
+      if (!payload) { toast('還沒有儲存的試跳紀錄'); return; }
+      const text = $('lineMsgPreview').value.trim() || buildLineSummaryText('trials');
+      const file = new File([payload.text], payload.fileName, { type: 'text/csv;charset=utf-8' });
+      await shareFileOrFallbackToLine(file, text, payload.fileName);
+    });
+
+    $('btnLineSendImg').addEventListener('click', async () => {
+      if (!S.track) { toast('請先完成影片分析'); return; }
+      toast('正在產生高解析報告圖卡…');
+      const blob = await buildReportCardBlob();
+      if (!blob) { toast('無法產生報告圖卡'); return; }
+      const fileName = `JUMP_${S.test}_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}_分析報告圖卡.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+      const text = $('lineMsgPreview').value.trim() || buildLineSummaryText('current');
+      if (navigator.clipboard && window.ClipboardItem) {
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); } catch (e) { /* ignore */ }
+      }
+      await shareFileOrFallbackToLine(file, text, fileName);
+    });
+
+    $('btnLineDownloadBoth').addEventListener('click', async () => {
+      const payload = buildFramesCsvPayload();
+      if (!payload) { toast('請先完成影片分析'); return; }
+      download(payload.fileName, payload.text);
+      const blob = await buildReportCardBlob();
+      if (blob) {
+        const imgName = `JUMP_${S.test}_${safeName(S.athlete.name) || 'athlete'}_${fileStamp()}_分析報告圖卡.png`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = imgName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }
+      await copyTextSafe($('lineMsgPreview').value.trim() || buildLineSummaryText('current'));
+      toast('已同時下載 CSV 檔與 PNG 報告圖卡，並複製統計摘要！');
+    });
+
     $('btnCsvFrames').addEventListener('click', exportFramesCsv);
+    $('btnCsvFrames2').addEventListener('click', exportFramesCsv);
     $('btnCsvTrials').addEventListener('click', exportTrialsCsv);
 
     // ---------------------------------------------------------------------
@@ -1887,6 +2809,7 @@
       if (!S.track) return;
       if (!S.keyframes.length) await captureKeyFrames();
       const m = getMetrics();
+      const { records, startSec, endSec, items } = buildSummaryStatsData();
       const a = S.athlete;
       const best = bestIds();
       const sameTrials = S.trials.filter(t => t.test === S.test);
@@ -1917,6 +2840,11 @@
           <tr><td>${S.test === 'DJ' ? '觸地最低點' : S.test === 'SJ' ? '起跳前最低點' : '下蹲最低點'}</td><td>${fmt(m.kneeLow)}°</td><td>${fmt(m.hipLow)}°</td><td>${signed(m.ankleLow)}°</td></tr>
           <tr><td>離地瞬間</td><td>${fmt(m.kneeTO)}°</td><td>${fmt(m.hipTO)}°</td><td>${signed(m.ankleTO)}°</td></tr>
           <tr><td>落地緩衝（最大）</td><td>${fmt(m.kneeLand)}°</td><td>${fmt(m.hipLand)}°</td><td>—</td></tr>
+        </table>
+        <table style="margin-bottom:10px">
+          <tr><th colspan="8">起跳過程高度與三關節活動角度綜合統計（${startSec.toFixed(2)} – ${endSec.toFixed(2)} s，共 ${records.length} 格）</th></tr>
+          <tr><th>統計項目</th><th>平均值</th><th>標準差</th><th>最小值</th><th>最大值</th><th>活動範圍 (ROM)</th><th>下蹲最低</th><th>離地瞬間 (T)</th></tr>
+          ${items.map(it => `<tr><td>${esc(it.label)}</td><td>${fmt(it.stats.mean, it.digits)}</td><td>${fmt(it.stats.sd, it.digits)}</td><td>${fmt(it.stats.min, it.digits)}</td><td>${fmt(it.stats.max, it.digits)}</td><td>${fmt(it.stats.rom, it.digits)}</td><td>${fmt(it.lowVal, it.digits)}</td><td>${fmt(it.toVal, it.digits)}</td></tr>`).join('')}
         </table>
         ${sameTrials.length ? `<table style="margin-bottom:10px"><tr><th>試跳</th><th>時間</th><th>滯空 (s)</th><th>跳高 (cm)</th>${S.test === 'DJ' ? '<th>觸地 (ms)</th><th>RSI</th>' : ''}</tr>
           ${sameTrials.map((t, i) => `<tr><td>${best.has(t.id) ? '★ ' : ''}第 ${i + 1} 次</td><td>${esc(t.savedAt)}</td><td>${fmt(t.flightS, 3)}</td><td><b>${fmt(t.heightCm)}</b></td>${S.test === 'DJ' ? `<td>${fmt(t.contactMs, 0)}</td><td>${fmt(t.rsi, 2)}</td>` : ''}</tr>`).join('')}</table>` : ''}
@@ -1958,7 +2886,7 @@
     })();
 
     // expose for debugging in the console
-    window.JUMP = { S, kinAt, getMetrics, runAnalysis, loadFile };
+    window.JUMP = { S, kinAt, getMetrics, buildSummaryStatsData, runAnalysis, loadFile };
   </script>
 </body>
 </html>
